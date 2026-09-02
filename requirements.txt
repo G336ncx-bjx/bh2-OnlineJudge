@@ -5,6 +5,7 @@ python-multipart>=0.0.9
 
 # 前端
 streamlit>=1.32
+streamlit-javascript>=0.1.5
 
 # 评测资源监控
 psutil>=5.9

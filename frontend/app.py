@@ -8,6 +8,7 @@ import json
 import requests
 import streamlit as st
 import streamlit.components.v1 as components
+from streamlit_javascript import st_javascript
 
 # 后端地址
 BACKEND = "http://127.0.0.1:8000"
@@ -60,25 +61,10 @@ def _restore_session():
     """
     if "session_cookie" in st.session_state:
         return
-    # components.html 渲染在 iframe 中（与主页面同源），iframe 里的 JS 通过
-    # Streamlit.setComponentValue 把 localStorage 的值回传给 Python。
-    # 首次运行返回 None（组件尚未回传），组件 setComponentValue 会触发一次 rerun，
-    # 之后返回稳定值；值稳定后不再触发额外 rerun，故不会死循环。
-    stored = components.html(
-        """
-        <script>
-        (function () {
-            let v = '';
-            try { v = window.localStorage.getItem('oj_session') || ''; } catch (e) {}
-            if (window.Streamlit) {
-                window.Streamlit.setComponentValue(v);
-            }
-        })();
-        </script>
-        """,
-        height=0,
-        scrolling=False,
-    )
+    # 通过 streamlit_javascript.st_javascript 从浏览器 localStorage 同步读回会话。
+    # 该库内部用 components.html + setComponentValue 正确封装了「浏览器→Python」回传，
+    # 首次调用返回 None 并触发一次 rerun，随后返回稳定值（值稳定后不再额外 rerun）。
+    stored = st_javascript("window.localStorage.getItem('oj_session')")
     if not isinstance(stored, str) or not stored:
         return
     try:
