@@ -302,6 +302,78 @@ def inject_css():
         .oj-sub-row {
             text-align: center;
         }
+        /* 测试点明细：自绘表格 */
+        .oj-case-table {
+            margin: 8px 0 16px 0;
+            border: 1px solid #e6ebef;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #ffffff;
+            box-shadow: 0 2px 10px rgba(26, 42, 108, .06);
+        }
+        .oj-case-title {
+            padding: 10px 16px;
+            font-size: 14px;
+            font-weight: 700;
+            color: #1a2a6c;
+            background: linear-gradient(90deg, #eef1ff, #f7f9ff);
+            border-bottom: 1px solid #e6ebef;
+        }
+        .oj-case-table table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0;
+        }
+        .oj-case-table th {
+            background: #f5f8fc;
+            color: #55627a;
+            font-size: 12px;
+            font-weight: 700;
+            text-align: center;
+            padding: 9px 12px;
+            border-bottom: 1px solid #e6ebef;
+            letter-spacing: .5px;
+        }
+        .oj-case-table td {
+            text-align: center;
+            padding: 9px 12px;
+            font-size: 13px;
+            color: #2b3445;
+            border-bottom: 1px solid #eef2f6;
+            font-variant-numeric: tabular-nums;
+        }
+        .oj-case-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+        .oj-case-table tbody tr:nth-child(even) {
+            background: #fafbfd;
+        }
+        .oj-case-table tbody tr:hover {
+            background: #f2f6ff;
+        }
+        /* 状态徽章 */
+        .oj-tag {
+            display: inline-block;
+            min-width: 42px;
+            padding: 2px 9px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 800;
+            text-align: center;
+            letter-spacing: .5px;
+            margin-right: 6px;
+        }
+        .oj-tag-sub {
+            font-size: 12px;
+            color: #8a9aa5;
+        }
+        .oj-tag-ac  { background: #e7f6ec; color: #1e8e3e; }
+        .oj-tag-wa  { background: #fdeaea; color: #c0392b; }
+        .oj-tag-tle { background: #fdf3e2; color: #b26a00; }
+        .oj-tag-mle { background: #fdeef3; color: #b5377a; }
+        .oj-tag-re  { background: #fdeaea; color: #c0392b; }
+        .oj-tag-ce  { background: #eef1f4; color: #55627a; }
+        .oj-tag-unk { background: #eef1f4; color: #8a9aa5; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -912,20 +984,38 @@ def render_submission_detail():
         if data.get("error_info"):
             st.error(data["error_info"])
 
-        # 日志明细
+        # 日志明细：自绘美观表格
         code2, log, _ = api_call("GET", f"/api/submissions/{sid}/log")
         if code2 == 200 and log and log.get("details"):
-            st.markdown("**测试点明细**")
-            result_zh = {"AC": "✅ AC", "WA": "❌ WA", "TLE": "⏱ TLE", "MLE": "💾 MLE", "RE": "⚠ RE", "CE": "🔧 CE", "UNK": "❓ UNK"}
-            rows = []
+            result_map = {
+                "AC": ("AC", "oj-tag-ac", "通过"),
+                "WA": ("WA", "oj-tag-wa", "答案错误"),
+                "TLE": ("TLE", "oj-tag-tle", "超时"),
+                "MLE": ("MLE", "oj-tag-mle", "内存超限"),
+                "RE": ("RE", "oj-tag-re", "运行错误"),
+                "CE": ("CE", "oj-tag-ce", "编译错误"),
+                "UNK": ("UNK", "oj-tag-unk", "未知"),
+            }
+            rows_html = []
             for d in log["details"]:
-                rows.append({
-                    "测试点": d["id"],
-                    "结果": result_zh.get(d["result"], d["result"]),
-                    "时间(s)": d["time"],
-                    "内存(MB)": d["memory"],
-                })
-            st.dataframe(rows, use_container_width=True, hide_index=True)
+                code_r, cls, label = result_map.get(d["result"], (d["result"], "oj-tag-unk", ""))
+                t = d.get("time")
+                m = d.get("memory")
+                t_str = f"{t:.3f} s" if isinstance(t, (int, float)) else (t if t is not None else "-")
+                m_str = f"{m:.2f} MB" if isinstance(m, (int, float)) else (m if m is not None else "-")
+                rows_html.append(
+                    f"<tr><td>#{d['id']}</td>"
+                    f"<td><span class=\"oj-tag {cls}\">{code_r}</span>"
+                    f"<span class=\"oj-tag-sub\">{label}</span></td>"
+                    f"<td>{t_str}</td><td>{m_str}</td></tr>"
+                )
+            table_html = (
+                "<div class=\"oj-case-table\">"
+                "<div class=\"oj-case-title\">测试点明细</div>"
+                "<table><thead><tr><th>测试点</th><th>结果</th><th>时间</th><th>内存</th></tr></thead>"
+                f"<tbody>{''.join(rows_html)}</tbody></table></div>"
+            )
+            st.markdown(table_html, unsafe_allow_html=True)
 
     # 底部返回按钮
     if st.button("← 返回提交记录", key="sub_detail_back"):
