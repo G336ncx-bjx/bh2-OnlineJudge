@@ -175,7 +175,7 @@ async def run_problem_task(task_id: str) -> None:
     except Exception as e:
         task["status"] = "failed"
         task["progress"] = f"命题失败: {type(e).__name__}"
-        task["error_info"] = str(e)
+        task["error_info"] = f"命题出错: {e}"
         _save_task(task)
 
 

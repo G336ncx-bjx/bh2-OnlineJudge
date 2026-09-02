@@ -1,6 +1,8 @@
 """FastAPI 主入口。"""
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from . import config, storage
@@ -11,6 +13,28 @@ from .routers import problems, languages, submissions, users, logs, ai
 from .routers.users import ensure_initial_admin
 
 app = FastAPI(title="OJ System", version="1.0.0")
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_exception_handler(request: Request, exc: RequestValidationError):
+    """把 Pydantic 字段校验错误统一转成中文提示。"""
+    errors = exc.errors()
+    msgs = []
+    for e in errors:
+        loc = e.get("loc", [])
+        field = loc[-1] if loc else "请求体"
+        # 常见校验错误类型的中文翻译
+        etype = e.get("type", "")
+        if etype == "missing":
+            msgs.append(f"字段「{field}」缺失")
+        elif "required" in etype:
+            msgs.append(f"字段「{field}」不能为空")
+        elif etype in ("string_type", "int_type", "float_type", "list_type", "bool_type"):
+            msgs.append(f"字段「{field}」类型不正确")
+        else:
+            msg = e.get("msg", "")
+            msgs.append(f"字段「{field}」校验失败: {msg}")
+    return JSONResponse(status_code=422, content={"code": 422, "msg": "；".join(msgs), "data": None})
 
 # Session 中间件
 app.add_middleware(SessionMiddleware, secret_key=config.SESSION_SECRET_KEY)

@@ -8,30 +8,36 @@ from ..schemas import ok, err
 
 router = APIRouter(prefix="/api/problems", tags=["problems"])
 
-# 必选字段
+# 必选字段：字段名 -> 中文标签（用于错误提示）
 REQUIRED_FIELDS = [
-    "id", "title", "description", "input_description",
-    "output_description", "samples", "constraints", "testcases",
+    ("id", "题目标识"),
+    ("title", "标题"),
+    ("description", "题目描述"),
+    ("input_description", "输入格式说明"),
+    ("output_description", "输出格式说明"),
+    ("samples", "样例"),
+    ("constraints", "数据限制"),
+    ("testcases", "测试点"),
 ]
 
 
 def _validate_problem(p: dict) -> str | None:
     """校验题目配置，返回错误信息或 None。"""
-    for field in REQUIRED_FIELDS:
+    for field, label in REQUIRED_FIELDS:
         if field not in p or p[field] in (None, ""):
-            return f"missing field: {field}"
+            return f"字段「{label}」不能为空"
     if not isinstance(p["samples"], list):
-        return "samples must be a list"
+        return "样例必须是列表"
     if not isinstance(p["testcases"], list):
-        return "testcases must be a list"
+        return "测试点必须是列表"
     for s in p["samples"]:
         if not isinstance(s, dict) or "input" not in s or "output" not in s:
-            return "sample must contain input and output"
+            return "样例必须包含 input 和 output"
     for t in p["testcases"]:
         if not isinstance(t, dict) or "input" not in t or "output" not in t:
-            return "testcase must contain input and output"
+            return "测试点必须包含 input 和 output"
     if not isinstance(p["id"], str) or not p["id"]:
-        return "id must be a non-empty string"
+        return "题目标识必须是非空字符串"
     return None
 
 

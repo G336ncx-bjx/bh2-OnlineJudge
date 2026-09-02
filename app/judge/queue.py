@@ -35,7 +35,7 @@ async def _worker() -> None:
                 submission = storage.get_submission(submission_id)
                 if submission is not None:
                     submission["status"] = "error"
-                    submission["error_info"] = "judge worker error"
+                    submission["error_info"] = "评测工作进程异常"
                     storage.save_submission(submission)
             except Exception:
                 pass
