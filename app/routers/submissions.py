@@ -27,8 +27,8 @@ async def create_submission(request: Request, body: SubmissionCreate):
     if body.language not in langs:
         return err(404, "语言不存在")
 
-    # 频率限制
-    if not check_rate_limit(user["user_id"]):
+    # 频率限制（管理员免限流，便于测试/批量提交）
+    if not is_admin(user) and not check_rate_limit(user["user_id"]):
         return err(429, "提交过于频繁，请稍后再试")
 
     submission_id = storage.new_id()
