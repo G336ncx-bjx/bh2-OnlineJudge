@@ -69,7 +69,10 @@ async def login(request: Request, body: LoginRequest):
     if user.get("role") == "banned":
         return err(403, "用户已被封禁")
 
+    # 写入会话版本号，用于 logout 时吊销旧 cookie（get_current_user 校验 sv 一致性）
+    sv = user.get("session_version", 0)
     request.session["user_id"] = user["user_id"]
+    request.session["sv"] = sv
     return ok({
         "user_id": user["user_id"],
         "username": user["username"],
@@ -82,6 +85,12 @@ async def logout(request: Request):
     user = get_current_user(request)
     if user is None:
         return err(401, "未登录")
+    # 递增会话版本号，使该用户所有已签发的旧 cookie 立即失效
+    users = storage.get_users()
+    stored = users.get(user["user_id"])
+    if stored is not None:
+        stored["session_version"] = stored.get("session_version", 0) + 1
+        storage.save_users(users)
     request.session.clear()
     return ok(None, "logout success")
 
