@@ -1036,36 +1036,37 @@ def render_submission_list():
             elif score > 0:
                 score_cls = "oj-score-part"
 
-        row = st.columns([1.0, 1.2, 2.0, 1.0, 1.2, 0.9, 1.7], gap="small",
-                         vertical_alignment="center", border=True)
-        row[0].markdown(
-            f"<div class=\"oj-cell-mono\">{s['submission_id']}</div>",
-            unsafe_allow_html=True, text_alignment="center",
-        )
-        row[1].markdown(
-            f"{s.get('username', '-')}",
-            text_alignment="center",
-        )
-        with row[2]:
-            if st.button(title, key=f"sub_row_{s['submission_id']}", use_container_width=True):
-                st.session_state["view_submission_id"] = s["submission_id"]
-                st.rerun()
-        row[3].markdown(
-            f"<span class=\"oj-tag {cls}\">{status_zh.get(stt, stt)}</span>",
-            unsafe_allow_html=True, text_alignment="center",
-        )
-        row[4].markdown(
-            f"<span class=\"{score_cls}\">{score_str}</span>",
-            unsafe_allow_html=True, text_alignment="center",
-        )
-        row[5].markdown(
-            f"<span class=\"oj-cell-lang\">{s.get('language', '-')}</span>",
-            unsafe_allow_html=True, text_alignment="center",
-        )
-        row[6].markdown(
-            f"{s.get('submit_time', '-')}",
-            text_alignment="center",
-        )
+        with st.container(border=True):
+            row = st.columns([1.0, 1.2, 2.0, 1.0, 1.2, 0.9, 1.7], gap="small",
+                             vertical_alignment="center")
+            row[0].markdown(
+                f"<div class=\"oj-cell-mono\">{s['submission_id']}</div>",
+                unsafe_allow_html=True, text_alignment="center",
+            )
+            row[1].markdown(
+                f"{s.get('username', '-')}",
+                text_alignment="center",
+            )
+            with row[2]:
+                if st.button(title, key=f"sub_row_{s['submission_id']}", use_container_width=True):
+                    st.session_state["view_submission_id"] = s["submission_id"]
+                    st.rerun()
+            row[3].markdown(
+                f"<span class=\"oj-tag {cls}\">{status_zh.get(stt, stt)}</span>",
+                unsafe_allow_html=True, text_alignment="center",
+            )
+            row[4].markdown(
+                f"<span class=\"{score_cls}\">{score_str}</span>",
+                unsafe_allow_html=True, text_alignment="center",
+            )
+            row[5].markdown(
+                f"<span class=\"oj-cell-lang\">{s.get('language', '-')}</span>",
+                unsafe_allow_html=True, text_alignment="center",
+            )
+            row[6].markdown(
+                f"{s.get('submit_time', '-')}",
+                text_alignment="center",
+            )
 
 
 def render_submission_detail():
