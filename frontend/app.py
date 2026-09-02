@@ -1595,13 +1595,13 @@ def render_ai_task_status(task_id: str):
     # Token 用量与费用
     if usage:
         currency = usage.get("currency", "USD")
-        currency_map = {"USD": ("$", "美元"), "CNY": ("¥", "人民币")}
-        symbol, cname = currency_map.get(currency, ("$", currency))
+        symbol_map = {"USD": "$", "CNY": "¥"}
+        symbol = symbol_map.get(currency, currency)
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("输入 Token", usage.get("input_tokens", 0))
         col2.metric("输出 Token", usage.get("output_tokens", 0))
         col3.metric("总 Token", usage.get("total_tokens", 0))
-        col4.metric("费用", f"{symbol}{usage.get('cost', 0.0):.6f} {cname}")
+        col4.metric("费用", f"{symbol}{usage.get('cost', 0.0):.6f}")
 
     # 运行中：刷新 + 中断按钮
     if status in ("pending", "running"):
