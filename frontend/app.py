@@ -1302,19 +1302,23 @@ def render_user_admin():
             users = data.get("users", [])
             uid_map = {u["username"]: u["user_id"] for u in users}
             username = st.selectbox("选择用户", list(uid_map.keys()))
-            # 角色下拉框：显示中文，内部用英文枚举值
-            role_zh_options = [ROLE_ZH[r] for r in ("user", "admin", "banned")]
-            role_zh = st.selectbox("新角色", role_zh_options)
-            role_reverse = {v: k for k, v in ROLE_ZH.items()}
-            role = role_reverse.get(role_zh, role_zh)
-            if st.button("更新角色"):
-                code, d, msg = api_call(
-                    "PUT", f"/api/users/{uid_map[username]}/role", {"role": role}
-                )
-                if code == 200:
-                    st.success(f"已将 {username} 的角色改为 {role_zh}")
-                else:
-                    st.error(msg)
+            # admin 内置账号锁定为管理员，前端直接禁用改角色操作
+            if username == "admin":
+                st.info("admin 账号已锁定为管理员，无法修改角色")
+            else:
+                # 角色下拉框：显示中文，内部用英文枚举值
+                role_zh_options = [ROLE_ZH[r] for r in ("user", "admin", "banned")]
+                role_zh = st.selectbox("新角色", role_zh_options)
+                role_reverse = {v: k for k, v in ROLE_ZH.items()}
+                role = role_reverse.get(role_zh, role_zh)
+                if st.button("更新角色"):
+                    code, d, msg = api_call(
+                        "PUT", f"/api/users/{uid_map[username]}/role", {"role": role}
+                    )
+                    if code == 200:
+                        st.success(f"已将 {username} 的角色改为 {role_zh}")
+                    else:
+                        st.error(msg)
 
     with tab3:
         code, data, msg = api_call("GET", "/api/logs/access/")

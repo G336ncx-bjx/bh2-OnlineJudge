@@ -227,6 +227,9 @@ async def update_role(request: Request, user_id: str, body: RoleUpdate):
     target = users.get(user_id)
     if target is None:
         return err(404, "用户不存在")
+    # 内置 admin 账号锁定为管理员：禁止改角色/封禁，防止误操作把唯一管理员降权导致系统无法管理
+    if target.get("username") == "admin":
+        return err(403, "admin 账号已锁定为管理员，无法修改角色")
     target["role"] = body.role
     storage.save_users(users)
     return ok({"user_id": user_id, "role": body.role}, "role updated")
