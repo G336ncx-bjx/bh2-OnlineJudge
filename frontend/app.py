@@ -180,6 +180,42 @@ def inject_css():
             color: #8a9aa5;
             font-size: 14px;
         }
+        /* 题目行：一行内 信息(左) + 操作按钮(右) */
+        .oj-problem-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .oj-problem-row .oj-problem-info {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        .oj-problem-row .oj-problem-actions {
+            flex: 0 0 auto;
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        /* 删除按钮：红色调 */
+        .oj-danger-btn button {
+            border-color: #e0b4b4 !important;
+            color: #c0392b !important;
+            background: #fdf3f3 !important;
+        }
+        .oj-danger-btn button:hover {
+            border-color: #c0392b !important;
+            background: #fbe4e4 !important;
+        }
+        /* 新增按钮：绿色调 */
+        .oj-create-btn button {
+            background: #1e8e3e !important;
+            border-color: #1e8e3e !important;
+            color: #ffffff !important;
+        }
+        .oj-create-btn button:hover {
+            background: #187a34 !important;
+            border-color: #187a34 !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -364,8 +400,69 @@ def render_user_info():
 
 
 # ---------------------------------------------------------------- 题目页面
+def _problem_payload(pid, title, description, input_desc, output_desc,
+                     constraints, samples_str, testcases_str, hint,
+                     time_limit, memory_limit):
+    """把表单字段组装为题目 payload，JSON 解析失败返回 None。"""
+    try:
+        samples_list = json.loads(samples_str) if samples_str.strip() else []
+        testcases_list = json.loads(testcases_str) if testcases_str.strip() else []
+    except json.JSONDecodeError:
+        return None
+    return {
+        "id": pid, "title": title, "description": description,
+        "input_description": input_desc, "output_description": output_desc,
+        "samples": samples_list, "constraints": constraints,
+        "testcases": testcases_list, "hint": hint,
+        "time_limit": time_limit, "memory_limit": memory_limit,
+    }
+
+
+def _problem_form(prefill: dict | None = None, pid_editable: bool = True):
+    """题目表单（新增/编辑共用）。返回提交按钮是否被点击。"""
+    p = prefill or {}
+    pid = st.text_input("题目 ID (必填)", value=p.get("id", ""), disabled=not pid_editable)
+    title = st.text_input("标题 (必填)", value=p.get("title", ""))
+    description = st.text_area("题目描述 (必填)", value=p.get("description", ""))
+    input_desc = st.text_area("输入格式说明 (必填)", value=p.get("input_description", ""))
+    output_desc = st.text_area("输出格式说明 (必填)", value=p.get("output_description", ""))
+    constraints = st.text_input("数据限制 (必填)", value=p.get("constraints", ""))
+    samples_str = st.text_area(
+        "样例 (JSON数组，元素含input/output)",
+        value=json.dumps(p.get("samples", []), ensure_ascii=False, indent=2)
+        if p.get("samples") else "",
+    )
+    testcases_str = st.text_area(
+        "测试点 (JSON数组，元素含input/output)",
+        value=json.dumps(p.get("testcases", []), ensure_ascii=False, indent=2)
+        if p.get("testcases") else "",
+    )
+    hint = st.text_input("提示 (可选)", value=p.get("hint", ""))
+    c1, c2 = st.columns(2)
+    with c1:
+        time_limit = st.number_input("时间限制(s)", value=float(p.get("time_limit", 3.0)), step=0.5)
+    with c2:
+        memory_limit = st.number_input("内存限制(MB)", value=int(p.get("memory_limit", 128)), step=16)
+
+    submitted = st.form_submit_button("提交", type="primary", use_container_width=True)
+    return submitted, _problem_payload(
+        pid, title, description, input_desc, output_desc, constraints,
+        samples_str, testcases_str, hint, time_limit, memory_limit,
+    )
+
+
 def render_problem_list():
-    st.subheader("题目列表")
+    # 标题行：左「题目列表」+ 右「新增题目」绿色按钮
+    head_l, head_r = st.columns([3, 1], vertical_alignment="center")
+    with head_l:
+        st.subheader("题目列表")
+    with head_r:
+        st.markdown('<div class="oj-create-btn"></div>', unsafe_allow_html=True)
+        if st.button("➕ 新增题目", key="problem_create", use_container_width=True):
+            st.session_state["problem_edit_id"] = None
+            st.session_state["problem_view"] = "create"
+            st.rerun()
+
     code, data, msg = api_call("GET", "/api/problems/")
     if code != 200:
         st.error(msg)
@@ -373,9 +470,84 @@ def render_problem_list():
     if not data:
         st.info("暂无题目")
         return
+
     for p in data:
-        if st.button(f"{p['id']} — {p['title']}", key=f"prob_{p['id']}"):
-            st.session_state["view_problem_id"] = p["id"]
+        pid = p["id"]
+        info_col, act_col = st.columns([4, 1.6], vertical_alignment="center")
+        with info_col:
+            st.markdown(
+                f'<div class="oj-problem-row"><div class="oj-problem-info">'
+                f'<span style="font-weight:700;">{pid}</span>'
+                f'&nbsp;—&nbsp;{p["title"]}</div></div>',
+                unsafe_allow_html=True,
+            )
+            if st.button(
+                f"查看 {pid}",
+                key=f"prob_view_{pid}",
+                use_container_width=True,
+            ):
+                st.session_state["view_problem_id"] = pid
+                st.rerun()
+        with act_col:
+            st.markdown('<div class="oj-problem-actions"></div>', unsafe_allow_html=True)
+            b1, b2 = st.columns(2, gap="small")
+            with b1:
+                if st.button("编辑", key=f"prob_edit_{pid}", use_container_width=True):
+                    st.session_state["problem_edit_id"] = pid
+                    st.session_state["problem_view"] = "edit"
+                    st.rerun()
+            with b2:
+                st.markdown('<div class="oj-danger-btn"></div>', unsafe_allow_html=True)
+                if st.button("删除", key=f"prob_del_{pid}", use_container_width=True):
+                    code2, _, msg2 = api_call("DELETE", f"/api/problems/{pid}")
+                    if code2 == 200:
+                        st.success(f"题目 {pid} 已删除")
+                        st.rerun()
+                    else:
+                        st.error(f"删除失败: {msg2}")
+
+
+def render_problem_create():
+    with st.form("create_problem_form"):
+        submitted, payload = _problem_form()
+    if submitted:
+        if payload is None:
+            st.error("样例/测试点必须是合法 JSON")
+        else:
+            code, data, msg = api_call("POST", "/api/problems/", payload)
+            if code == 200:
+                st.success(f"题目 {data['id']} 添加成功")
+                st.session_state.pop("problem_view", None)
+                st.session_state.pop("problem_edit_id", None)
+                st.rerun()
+            else:
+                st.error(f"添加失败: {msg}")
+
+
+def render_problem_edit():
+    pid = st.session_state.get("problem_edit_id")
+    if not pid:
+        st.info("未指定要编辑的题目")
+        return
+    code, data, msg = api_call("GET", f"/api/problems/{pid}")
+    if code != 200:
+        st.error(msg)
+        return
+    st.subheader(f"编辑题目: {pid}")
+    with st.form("edit_problem_form"):
+        submitted, payload = _problem_form(prefill=data, pid_editable=False)
+    if submitted:
+        if payload is None:
+            st.error("样例/测试点必须是合法 JSON")
+        else:
+            code2, data2, msg2 = api_call("PUT", f"/api/problems/{pid}", payload)
+            if code2 == 200:
+                st.success(f"题目 {pid} 已更新")
+                st.session_state.pop("problem_view", None)
+                st.session_state.pop("problem_edit_id", None)
+                st.rerun()
+            else:
+                st.error(f"更新失败: {msg2}")
 
 
 def render_problem_detail():
@@ -408,59 +580,6 @@ def render_problem_detail():
     if st.button("返回列表"):
         st.session_state.pop("view_problem_id", None)
         st.rerun()
-
-
-def render_problem_create():
-    st.subheader("新增题目")
-    with st.form("create_problem_form"):
-        pid = st.text_input("题目 ID (必填)")
-        title = st.text_input("标题 (必填)")
-        description = st.text_area("题目描述 (必填)")
-        input_desc = st.text_area("输入格式说明 (必填)")
-        output_desc = st.text_area("输出格式说明 (必填)")
-        constraints = st.text_input("数据限制 (必填)")
-        samples = st.text_area("样例 (JSON数组，元素含input/output)")
-        testcases = st.text_area("测试点 (JSON数组，元素含input/output)")
-        hint = st.text_input("提示 (可选)")
-        time_limit = st.number_input("时间限制(s)", value=3.0, step=0.5)
-        memory_limit = st.number_input("内存限制(MB)", value=128, step=16)
-        if st.form_submit_button("提交"):
-            try:
-                samples_list = json.loads(samples) if samples else []
-                testcases_list = json.loads(testcases) if testcases else []
-            except json.JSONDecodeError:
-                st.error("样例/测试点必须是合法 JSON")
-                st.stop()
-            payload = {
-                "id": pid, "title": title, "description": description,
-                "input_description": input_desc, "output_description": output_desc,
-                "samples": samples_list, "constraints": constraints,
-                "testcases": testcases_list, "hint": hint,
-                "time_limit": time_limit, "memory_limit": memory_limit,
-            }
-            code, data, msg = api_call("POST", "/api/problems/", payload)
-            if code == 200:
-                st.success(f"题目 {data['id']} 添加成功")
-            else:
-                st.error(f"添加失败: {msg}")
-
-
-def render_problem_delete():
-    st.subheader("删除题目 (仅管理员)")
-    code, data, msg = api_call("GET", "/api/problems/")
-    if code != 200:
-        st.error(msg)
-        return
-    if not data:
-        st.info("暂无题目")
-        return
-    pid = st.selectbox("选择题目", [p["id"] for p in data])
-    if st.button("删除", type="primary"):
-        code, data, msg = api_call("DELETE", f"/api/problems/{pid}")
-        if code == 200:
-            st.success(f"题目 {pid} 已删除")
-        else:
-            st.error(f"删除失败: {msg}")
 
 
 # ---------------------------------------------------------------- 评测提交页面
@@ -815,17 +934,12 @@ def main():
     elif menu == "题目":
         if "view_problem_id" in st.session_state:
             render_problem_detail()
+        elif st.session_state.get("problem_view") == "create":
+            render_problem_create()
+        elif st.session_state.get("problem_view") == "edit":
+            render_problem_edit()
         else:
-            sub = st.radio(
-                "题目操作", ["查看列表", "新增题目", "删除题目"],
-                horizontal=True, label_visibility="collapsed", key="problem_sub",
-            )
-            if sub == "查看列表":
-                render_problem_list()
-            elif sub == "新增题目":
-                render_problem_create()
-            else:
-                render_problem_delete()
+            render_problem_list()
     elif menu == "评测提交":
         if "view_submission_id" in st.session_state:
             render_submission_detail()
