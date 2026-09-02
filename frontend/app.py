@@ -77,7 +77,9 @@ def inject_css():
         .block-container {
             padding-top: 0.8rem;
             padding-bottom: 2rem;
-            max-width: 1240px;
+            padding-left: 2rem;
+            padding-right: 2rem;
+            max-width: 100%;
         }
         /* 隐藏 iframe 组件默认边框与滚动 */
         iframe {
@@ -117,7 +119,7 @@ def inject_css():
             border-color: #1a2a6c;
             color: #1a2a6c;
         }
-        /* 顶栏右侧：用户信息行 + 退出按钮 */
+        /* 顶栏右侧：用户信息与退出按钮同一行右对齐 */
         .oj-user-row {
             text-align: right;
             line-height: 1.4;
@@ -126,16 +128,17 @@ def inject_css():
         .oj-logout-wrap {
             display: flex;
             justify-content: flex-end;
-            margin-top: 2px;
+            margin-top: 3px;
         }
         .oj-logout-wrap button {
             width: auto;
             border-radius: 8px;
             border: 1px solid #d6dfe4;
-            padding: 3px 12px;
+            padding: 3px 14px;
             font-size: 12px;
             white-space: nowrap !important;
-            min-height: 28px;
+            min-height: 30px;
+            line-height: 1;
         }
         /* 用户区文字 */
         .oj-user-name {
@@ -213,7 +216,7 @@ def render_topbar():
             u = current_user()
             role_map = {"admin": "管理员", "user": "用户", "banned": "已封禁"}
             role_text = role_map.get(u["role"], u["role"])
-            # 用户信息与退出按钮同一行：用户名靠右，退出按钮紧随其后
+            # 用户名、角色、退出按钮同行右对齐
             st.markdown(
                 f'<div class="oj-user-row">'
                 f'<span class="oj-user-name">{u["username"]}</span>'
