@@ -7,6 +7,7 @@ import json
 
 import requests
 import streamlit as st
+import streamlit.components.v1 as components
 
 # 后端地址
 BACKEND = "http://127.0.0.1:8000"
@@ -56,30 +57,217 @@ def logout():
     st.rerun()
 
 
-# ---------------------------------------------------------------- 侧边栏
-def render_sidebar():
-    with st.sidebar:
-        st.title("⚖️ OJ 系统")
+# ---------------------------------------------------------------- 顶栏
+MENU_ITEMS = [
+    ("题目", "📚"),
+    ("评测提交", "🚀"),
+    ("用户", "👤"),
+    ("用户管理", "🛠️"),
+    ("AI 命题", "🤖"),
+]
+
+
+def inject_css():
+    """注入全局样式：隐藏默认框架元素，美化顶栏与导航按钮。"""
+    st.markdown(
+        """
+        <style>
+        header[data-testid="stHeader"] { background: transparent; }
+        #MainMenu, footer { visibility: hidden; }
+        .block-container {
+            padding-top: 0.8rem;
+            padding-bottom: 2rem;
+            max-width: 1240px;
+        }
+        /* 隐藏 iframe 组件默认边框与滚动 */
+        iframe {
+            border: none !important;
+        }
+        .oj-divider {
+            border-top: 1px solid #e6ebef;
+            margin: 14px 0 16px 0;
+        }
+        /* 顶栏标题 */
+        .oj-title {
+            font-size: 21px;
+            font-weight: 800;
+            color: #1a2a6c;
+            letter-spacing: 1px;
+            white-space: nowrap;
+            line-height: 1.2;
+        }
+        .oj-subtitle {
+            font-size: 10px;
+            color: #8a9aa5;
+            letter-spacing: 2px;
+            white-space: nowrap;
+        }
+        /* 导航按钮：胶囊样式，保证完整可点击、不换行 */
+        .oj-navbtn button {
+            width: 100%;
+            border-radius: 10px;
+            border: 1px solid #d6dfe4;
+            padding: 8px 10px;
+            font-size: 13px;
+            white-space: nowrap !important;
+            transition: all .15s ease;
+        }
+        .oj-navbtn button:hover {
+            border-color: #1a2a6c;
+            color: #1a2a6c;
+        }
+        /* 用户区文字 */
+        .oj-user-name {
+            font-size: 15px;
+            font-weight: 700;
+            color: #1a2a6c;
+        }
+        .oj-user-role {
+            display: inline-block;
+            background: #eef1ff;
+            color: #1a2a6c;
+            border-radius: 10px;
+            padding: 1px 9px;
+            font-size: 11px;
+            margin-left: 6px;
+        }
+        .oj-user-guest {
+            color: #8a9aa5;
+            font-size: 14px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_topbar():
+    """顶栏：左 logo+标题，中导航按钮（原生 st.button），右用户信息。
+
+    导航用 Streamlit 原生 st.button，点击走 rerun 机制，保证当前页内切换、
+    点击区域完整可靠（不再用 iframe <a> 跳转，避免被组件沙箱拦截导致点不动）。
+    """
+    inject_css()
+
+    current = st.session_state.get("menu", "题目")
+
+    # 三区布局：左标题 / 中导航 / 右用户
+    col_brand, col_nav, col_user = st.columns([1.25, 4.0, 1.25], gap="small")
+
+    # 左：logo + 标题
+    with col_brand:
+        st.markdown(
+            '<div style="display:flex;align-items:center;gap:10px;height:100%;'
+            'padding-top:4px;">'
+            '<span style="font-size:26px;line-height:1;">⚖️</span>'
+            '<span style="display:flex;flex-direction:column;line-height:1.2;">'
+            '<span class="oj-title">OJ 在线评测系统</span>'
+            '<span class="oj-subtitle">ONLINE JUDGE</span>'
+            "</span></div>",
+            unsafe_allow_html=True,
+        )
+
+    # 中：导航按钮（原生 button，当前页切换）
+    with col_nav:
+        nav_cols = st.columns(len(MENU_ITEMS), gap="small")
+        for i, (name, icon) in enumerate(MENU_ITEMS):
+            with nav_cols[i]:
+                active = name == current
+                btn_type = "primary" if active else "secondary"
+                # 用 markdown 包裹类名以便 CSS 定位（原生 button 保证可点）
+                st.markdown('<div class="oj-navbtn"></div>', unsafe_allow_html=True)
+                if st.button(
+                    f"{icon} {name}",
+                    key=f"navbtn_{name}",
+                    type=btn_type,
+                    use_container_width=True,
+                ):
+                    st.session_state["menu"] = name
+                    st.rerun()
+
+    # 右：用户信息
+    with col_user:
         if is_logged_in() and current_user():
             u = current_user()
-            st.write(f"**{u['username']}**  (角色: {u['role']})")
-            if st.button("退出登录", use_container_width=True):
-                logout()
+            role_map = {"admin": "管理员", "user": "用户", "banned": "已封禁"}
+            role_text = role_map.get(u["role"], u["role"])
+            st.markdown(
+                f'<div style="text-align:right;line-height:1.4;padding-top:6px;">'
+                f'<span class="oj-user-name">{u["username"]}</span>'
+                f'<span class="oj-user-role">{role_text}</span></div>',
+                unsafe_allow_html=True,
+            )
         else:
-            st.info("未登录")
+            st.markdown(
+                '<div style="text-align:right;line-height:2.6;">'
+                '<span class="oj-user-guest">未登录</span></div>',
+                unsafe_allow_html=True,
+            )
 
-        st.divider()
-        menu = st.radio(
-            "导航",
-            ["题目", "评测提交", "用户", "用户管理", "AI 命题"],
-            label_visibility="collapsed",
-        )
-    return menu
+    st.markdown('<div class="oj-divider"></div>', unsafe_allow_html=True)
+    return current
+
+
+def render_logout_button():
+    """退出登录按钮（登录后显示）。"""
+    if is_logged_in() and current_user():
+        st.markdown('<div style="height:4px;"></div>', unsafe_allow_html=True)
+        cols = st.columns([5, 1])
+        with cols[1]:
+            if st.button("退出登录", key="topbar_logout", use_container_width=True):
+                logout()
 
 
 # ---------------------------------------------------------------- 用户页面
+def _inject_password_guard():
+    """禁止密码输入框的粘贴(paste)、复制(copy)、剪切(cut)操作。
+
+    Streamlit 的 st.text_input(type="password") 无原生禁止参数，
+    故用 components.html 注入 JS，在父页面(Streamlit 主文档)上
+    拦截密码框的剪贴板事件；并用 MutationObserver 兜底，保证
+    Streamlit rerun 重新渲染输入框后仍能生效。
+    """
+    components.html(
+        """
+        <script>
+        (function () {
+          function guard(el) {
+            if (!el || el.dataset.pwdGuarded) return;
+            el.dataset.pwdGuarded = "1";
+            el.addEventListener("paste", function (e) {
+              e.preventDefault();
+            });
+            el.addEventListener("copy", function (e) {
+              e.preventDefault();
+            });
+            el.addEventListener("cut", function (e) {
+              e.preventDefault();
+            });
+          }
+          function scan() {
+            try {
+              var doc = window.parent.document;
+              doc.querySelectorAll('input[type="password"]').forEach(guard);
+            } catch (err) {}
+          }
+          scan();
+          // 兜底：监听父文档 DOM 变化，处理 rerun 后新增的输入框
+          try {
+            var doc = window.parent.document;
+            var obs = new MutationObserver(function () { scan(); });
+            obs.observe(doc.body, { childList: true, subtree: true });
+          } catch (err) {}
+        })();
+        </script>
+        """,
+        height=0,
+        scrolling=False,
+    )
+
+
 def render_login():
     st.subheader("登录 / 注册")
+    _inject_password_guard()
     tab1, tab2 = st.tabs(["登录", "注册"])
 
     with tab1:
@@ -567,11 +755,13 @@ def render_ai_task_status(task_id: str):
 
 # ---------------------------------------------------------------- 主入口
 def main():
-    menu = render_sidebar()
+    menu = render_topbar()
 
     if not is_logged_in():
         render_login()
         return
+
+    render_logout_button()
 
     if menu == "用户":
         render_user_info()
@@ -579,7 +769,10 @@ def main():
         if "view_problem_id" in st.session_state:
             render_problem_detail()
         else:
-            sub = st.radio("题目操作", ["查看列表", "新增题目", "删除题目"], horizontal=True)
+            sub = st.radio(
+                "题目操作", ["查看列表", "新增题目", "删除题目"],
+                horizontal=True, label_visibility="collapsed", key="problem_sub",
+            )
             if sub == "查看列表":
                 render_problem_list()
             elif sub == "新增题目":
@@ -590,7 +783,10 @@ def main():
         if "view_submission_id" in st.session_state:
             render_submission_detail()
         else:
-            sub = st.radio("评测操作", ["提交代码", "提交记录"], horizontal=True)
+            sub = st.radio(
+                "评测操作", ["提交代码", "提交记录"],
+                horizontal=True, label_visibility="collapsed", key="submit_sub",
+            )
             if sub == "提交代码":
                 render_submission()
             else:
