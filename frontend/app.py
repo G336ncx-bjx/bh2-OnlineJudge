@@ -83,36 +83,41 @@ def _restore_session():
     if st.session_state.get("_logged_out"):
         return
     # 通过 streamlit_javascript.st_javascript 从浏览器 localStorage 同步读回会话。
-    # 该库内部用 components.html + setComponentValue 正确封装了「浏览器→Python」回传，
-    # 首次调用返回 None 并触发一次 rerun，随后返回稳定值（值稳定后不再额外 rerun）。
-    stored = st_javascript("window.localStorage.getItem('oj_session')", key="oj_session_get")
+    # 注意：st_javascript 采用「两段式回传」——首次返回默认值 0 触发一次 rerun，
+    # 第二次才返回真实值。因此 key 必须固定（保持组件实例稳定），否则每次换 key
+    # 都会重新挂载组件、永远返回默认值、无法恢复。
+    stored = st_javascript(
+        "window.localStorage.getItem('oj_session')", key="oj_session_get"
+    )
     if not isinstance(stored, str) or not stored:
         return
     try:
         payload = json.loads(stored)
     except (json.JSONDecodeError, TypeError):
         return
-    if payload.get("cookie"):
+    # cookie 与 user_info 必须同时有效才恢复，避免「半截会话」（有 user_info 无 cookie）
+    if payload.get("cookie") and payload.get("user_info"):
         st.session_state["session_cookie"] = payload["cookie"]
-    if payload.get("user_info"):
         st.session_state["user_info"] = payload["user_info"]
 
 
 def _persist_session():
     """把当前会话（session cookie + 用户信息）写入浏览器 localStorage（登录成功后调用）。
 
-    统一用 st_javascript 同步通道写入（与 _restore_session 的读取同源），
-    避免 components.html 异步 iframe 与读取之间的时序竞态。
+    写入属于「副作用型」操作，用 components.html 注入 <script> 在 iframe 加载时
+    确定执行（发射后不管，无需回传），避免 st_javascript 因固定 key 缓存 / 异步
+    回传而导致的写入丢失或错乱。
     """
     payload = {
         "cookie": st.session_state.get("session_cookie", ""),
         "user_info": st.session_state.get("user_info"),
     }
-    st_javascript(
-        "window.localStorage.setItem('oj_session', "
+    components.html(
+        "<script>(function(){try{window.localStorage.setItem('oj_session',"
         + json.dumps(json.dumps(payload, ensure_ascii=False))
-        + ")",
-        key="oj_session_set",
+        + ");}catch(e){}})();</script>",
+        height=0,
+        scrolling=False,
     )
 
 
@@ -122,8 +127,12 @@ def logout():
     st.session_state.pop("user_info", None)
     # 标记「已登出」，阻止 _restore_session 在本次 rerun 时把旧会话读回
     st.session_state["_logged_out"] = True
-    # 同步清除浏览器 localStorage 中持久化的会话（与 _persist_session 同走 st_javascript）
-    st_javascript("window.localStorage.removeItem('oj_session')", key="oj_session_del")
+    # 清除浏览器 localStorage 中持久化的会话（副作用型，components.html 确定执行）
+    components.html(
+        "<script>(function(){try{window.localStorage.removeItem('oj_session');}catch(e){}})();</script>",
+        height=0,
+        scrolling=False,
+    )
     st.rerun()
 
 
