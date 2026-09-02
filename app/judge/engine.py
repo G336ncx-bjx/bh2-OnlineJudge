@@ -118,9 +118,10 @@ async def judge_submission(submission: dict) -> dict:
         with open(src_path, "w", encoding="utf-8", newline="") as f:
             f.write(submission["code"])
 
-        # 1. 编译
+        # 1. 编译（用独立的编译时限，不复用运行时限，避免编译器冷启动超时误判 CE）
         compile_res = await compile_source(lang, src_path, exe_path, tmp_dir,
-                                           time_limit, memory_limit)
+                                           config.COMPILE_TIME_LIMIT,
+                                           config.COMPILE_MEMORY_LIMIT)
 
         compile_info = {
             "result": "success" if compile_res.returncode == 0 else "failed",

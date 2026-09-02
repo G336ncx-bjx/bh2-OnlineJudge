@@ -28,6 +28,10 @@ INIT_ADMIN_PASSWORD = "admintestpassword"
 DEFAULT_TIME_LIMIT = 3.0   # 秒
 DEFAULT_MEMORY_LIMIT = 128  # MB
 
+# 编译阶段时限（独立于运行时限；编译需预留编译器冷启动时间，应远大于运行时限）
+COMPILE_TIME_LIMIT = 30.0  # 秒
+COMPILE_MEMORY_LIMIT = 512  # MB
+
 # 提交频率限制：1 分钟内最多 N 次
 RATE_LIMIT_WINDOW = 60      # 秒
 RATE_LIMIT_MAX = 3          # 次

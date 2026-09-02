@@ -291,6 +291,17 @@ def inject_css():
             background: #187a34 !important;
             border-color: #187a34 !important;
         }
+        /* 表格文字居中：dataframe / table / 表格单元格 */
+        [data-testid="stDataFrame"] table td,
+        [data-testid="stTable"] table td,
+        [data-testid="stTable"] table th,
+        [data-testid="stDataFrame"] table th {
+            text-align: center !important;
+        }
+        /* 提交记录列表行文字居中 */
+        .oj-sub-row {
+            text-align: center;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -682,6 +693,9 @@ def render_problem_detail():
                 st.session_state["submit_preselect_pid"] = pid
                 st.session_state["menu"] = "评测提交"
                 st.session_state.pop("view_problem_id", None)
+                # 清除评测相关的残留状态，确保进入「提交代码」页而非详情页
+                st.session_state.pop("view_submission_id", None)
+                st.session_state.pop("show_submission_list", None)
                 st.rerun()
         with act_r:
             if st.button("返回列表", use_container_width=True):
@@ -812,28 +826,29 @@ def render_submission_list():
 
     # 表格化展示：提交编号、提交者、题目、状态、得分、语言、时间
     status_zh = {"pending": "评测中", "success": "完成", "error": "出错"}
-    rows = []
+    st.markdown("💡 点击**题目名称**即可查看该条提交的详情")
+
+    # 表头（居中）
+    hdr = st.columns([1.0, 1.2, 1.8, 1.0, 1.2, 0.9, 1.6], gap="small")
+    hdr_labels = ["提交编号", "提交者", "题目", "状态", "得分", "语言", "提交时间"]
+    for c, lab in zip(hdr, hdr_labels):
+        c.markdown(f"<div style='text-align:center'><b>{lab}</b></div>", unsafe_allow_html=True)
+
     for s in subs:
         score = s.get("score")
         score_str = f"{score} / {s.get('counts', 0) * 10}" if score is not None else "-"
-        rows.append({
-            "提交编号": s["submission_id"],
-            "提交者": s.get("username", ""),
-            "题目": s.get("problem_title") or s.get("problem_id", ""),
-            "状态": status_zh.get(s["status"], s["status"]),
-            "得分": score_str,
-            "语言": s.get("language", ""),
-            "提交时间": s.get("submit_time", ""),
-        })
-    st.dataframe(rows, use_container_width=True, hide_index=True)
-
-    # 点击某条记录查看详情：用 selectbox 选择提交编号跳转
-    st.markdown("**查看某条提交详情**")
-    sub_ids = [s["submission_id"] for s in subs]
-    sel = st.selectbox("选择提交编号", sub_ids, label_visibility="collapsed")
-    if st.button("查看详情"):
-        st.session_state["view_submission_id"] = sel
-        st.rerun()
+        title = s.get("problem_title") or s.get("problem_id", "")
+        row = st.columns([1.0, 1.2, 1.8, 1.0, 1.2, 0.9, 1.6], gap="small")
+        row[0].markdown(f"<div style='text-align:center'>{s['submission_id']}</div>", unsafe_allow_html=True)
+        row[1].markdown(f"<div style='text-align:center'>{s.get('username', '')}</div>", unsafe_allow_html=True)
+        with row[2]:
+            if st.button(title, key=f"sub_row_{s['submission_id']}", use_container_width=True):
+                st.session_state["view_submission_id"] = s["submission_id"]
+                st.rerun()
+        row[3].markdown(f"<div style='text-align:center'>{status_zh.get(s['status'], s['status'])}</div>", unsafe_allow_html=True)
+        row[4].markdown(f"<div style='text-align:center'>{score_str}</div>", unsafe_allow_html=True)
+        row[5].markdown(f"<div style='text-align:center'>{s.get('language', '')}</div>", unsafe_allow_html=True)
+        row[6].markdown(f"<div style='text-align:center'>{s.get('submit_time', '')}</div>", unsafe_allow_html=True)
 
 
 def render_submission_detail():
