@@ -101,24 +101,31 @@ def _restore_session():
         st.session_state["user_info"] = payload["user_info"]
 
 
-def _persist_session():
-    """把当前会话（session cookie + 用户信息）写入浏览器 localStorage（登录成功后调用）。
+def _sync_localstorage():
+    """在每次 run 的稳定阶段（main 末尾）同步浏览器 localStorage。
 
-    写入属于「副作用型」操作，用 components.html 注入 <script> 在 iframe 加载时
-    确定执行（发射后不管，无需回传），避免 st_javascript 因固定 key 缓存 / 异步
-    回传而导致的写入丢失或错乱。
+    根据当前 session_state 的登录态，用 components.html 注入 <script> 在 iframe
+    加载时确定执行 setItem / removeItem。放在 main 末尾执行，不受后续 st.rerun()
+    干扰（本次 run 正常渲染到浏览器，脚本必执行），彻底避免「写 localStorage 与
+    rerun 时序竞态」导致的残留脏数据。
     """
-    payload = {
-        "cookie": st.session_state.get("session_cookie", ""),
-        "user_info": st.session_state.get("user_info"),
-    }
-    components.html(
-        "<script>(function(){try{window.localStorage.setItem('oj_session',"
-        + json.dumps(json.dumps(payload, ensure_ascii=False))
-        + ");}catch(e){}})();</script>",
-        height=0,
-        scrolling=False,
-    )
+    cookie = st.session_state.get("session_cookie", "")
+    user_info = st.session_state.get("user_info")
+    if cookie and user_info:
+        payload = {"cookie": cookie, "user_info": user_info}
+        components.html(
+            "<script>(function(){try{window.localStorage.setItem('oj_session',"
+            + json.dumps(json.dumps(payload, ensure_ascii=False))
+            + ");}catch(e){}})();</script>",
+            height=0,
+            scrolling=False,
+        )
+    else:
+        components.html(
+            "<script>(function(){try{window.localStorage.removeItem('oj_session');}catch(e){}})();</script>",
+            height=0,
+            scrolling=False,
+        )
 
 
 def logout():
@@ -127,12 +134,6 @@ def logout():
     st.session_state.pop("user_info", None)
     # 标记「已登出」，阻止 _restore_session 在本次 rerun 时把旧会话读回
     st.session_state["_logged_out"] = True
-    # 清除浏览器 localStorage 中持久化的会话（副作用型，components.html 确定执行）
-    components.html(
-        "<script>(function(){try{window.localStorage.removeItem('oj_session');}catch(e){}})();</script>",
-        height=0,
-        scrolling=False,
-    )
     st.rerun()
 
 
@@ -649,7 +650,6 @@ def render_login():
                 if code == 200:
                     st.session_state["user_info"] = data
                     st.session_state.pop("_logged_out", None)
-                    _persist_session()
                     st.success("登录成功")
                     st.rerun()
                 else:
@@ -1507,6 +1507,8 @@ def main():
 
     if not is_logged_in():
         render_login()
+        # 每次 run 末尾统一同步 localStorage（未登录 → 清除，避免残留脏会话）
+        _sync_localstorage()
         return
 
     if menu == "用户":
@@ -1531,6 +1533,9 @@ def main():
         render_user_admin()
     elif menu == "AI 命题":
         render_ai()
+
+    # 每次 run 末尾统一同步 localStorage（已登录 → 写入当前会话）
+    _sync_localstorage()
 
 
 if __name__ == "__main__":
