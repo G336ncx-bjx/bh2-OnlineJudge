@@ -83,9 +83,8 @@ def _restore_session():
     if st.session_state.get("_logged_out"):
         return
     # 通过 streamlit_javascript.st_javascript 从浏览器 localStorage 同步读回会话。
-    # 注意：st_javascript 采用「两段式回传」——首次返回默认值 0 触发一次 rerun，
-    # 第二次才返回真实值。因此 key 必须固定（保持组件实例稳定），否则每次换 key
-    # 都会重新挂载组件、永远返回默认值、无法恢复。
+    # 注意：st_javascript 采用「两段式回传」——首次返回默认值 0（表示"尚未拿到"），
+    # 触发一次 rerun，第二次才返回真实值。因此 key 必须固定（保持组件实例稳定）。
     stored = st_javascript(
         "window.localStorage.getItem('oj_session')", key="oj_session_get"
     )
@@ -104,10 +103,17 @@ def _restore_session():
 def _sync_localstorage():
     """在每次 run 的稳定阶段（main 末尾）同步浏览器 localStorage。
 
-    根据当前 session_state 的登录态，用 components.html 注入 <script> 在 iframe
-    加载时确定执行 setItem / removeItem。放在 main 末尾执行，不受后续 st.rerun()
-    干扰（本次 run 正常渲染到浏览器，脚本必执行），彻底避免「写 localStorage 与
-    rerun 时序竞态」导致的残留脏数据。
+    三种状态分别处理，避免时序竞态把尚未恢复的会话误删：
+    - 已登录（有 cookie 且 user_info）→ 写入当前会话；
+    - 明确登出（_logged_out 标记）→ 删除 localStorage 残留会话；
+    - 其它（如「恢复探测中」的过渡 run，此时 st_javascript 尚未回传真实值）→ 不动。
+
+    「不动」这一步是关键：F5 刷新后第一次 run 里 st_javascript 返回默认值 0，
+    session_state 里还没有 cookie，若此时贸然 removeItem，会把浏览器里还未来得及
+    读回的 oj_session 清掉，导致登录态永远无法恢复。
+
+    用 components.html 注入 <script> 在 iframe 加载时确定执行 setItem / removeItem，
+    放在 main 末尾执行，不受后续 st.rerun() 干扰（本次 run 正常渲染到浏览器，脚本必执行）。
     """
     cookie = st.session_state.get("session_cookie", "")
     user_info = st.session_state.get("user_info")
@@ -120,12 +126,14 @@ def _sync_localstorage():
             height=0,
             scrolling=False,
         )
-    else:
+    elif st.session_state.get("_logged_out"):
+        # 明确登出：清掉浏览器里残留的旧会话
         components.html(
             "<script>(function(){try{window.localStorage.removeItem('oj_session');}catch(e){}})();</script>",
             height=0,
             scrolling=False,
         )
+    # 其它情况（过渡态）什么都不做，避免误删
 
 
 def logout():
