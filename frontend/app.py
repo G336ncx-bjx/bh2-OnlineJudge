@@ -256,9 +256,18 @@ def render_topbar():
         # 中：导航按钮（原生 button，当前页切换）
         with col_nav:
             nav_cols = st.columns(len(MENU_ITEMS), gap="small", vertical_alignment="center")
+            # 是否处于题目子视图（详情/新增/编辑）——此时「题目」按钮不应高亮
+            in_problem_subview = bool(
+                st.session_state.get("view_problem_id")
+                or st.session_state.get("problem_view")
+                or st.session_state.get("problem_edit_id")
+            )
             for i, (name, icon) in enumerate(MENU_ITEMS):
                 with nav_cols[i]:
-                    active = name == current
+                    if name == "题目":
+                        active = name == current and not in_problem_subview
+                    else:
+                        active = name == current
                     btn_type = "primary" if active else "secondary"
                     st.markdown('<div class="oj-navbtn"></div>', unsafe_allow_html=True)
                     if st.button(
