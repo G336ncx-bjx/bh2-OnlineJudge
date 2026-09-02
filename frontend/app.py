@@ -1460,7 +1460,7 @@ def render_ai():
         b1, b2 = st.columns(2, gap="small")
         with b1:
             if st.button("📋 历史任务", key="ai_task_history", use_container_width=True):
-                st.session_state["show_ai_history"] = True
+                st.session_state["ai_view"] = "history"
                 st.rerun()
         with b2:
             if st.button("⚙️ 模型配置", key="ai_model_config", use_container_width=True):
@@ -1475,9 +1475,12 @@ def render_ai():
             f"（密钥{'已' if current.get('api_key_configured') else '未'}配置）"
         )
 
-    # 主体：历史任务列表 或 智能命题表单
-    if st.session_state.get("show_ai_history"):
+    # 主体：按视图状态切换 —— 命题表单 / 历史任务列表 / 任务详情
+    ai_view = st.session_state.get("ai_view", "create")
+    if ai_view == "history":
         render_ai_task_list()
+    elif ai_view == "detail":
+        render_ai_task_detail()
     else:
         render_ai_problem()
 
@@ -1546,7 +1549,7 @@ def render_ai_task_list():
         st.subheader("历史任务")
     with head_r:
         if st.button("✏️ 返回命题", key="ai_history_back", use_container_width=True):
-            st.session_state.pop("show_ai_history", None)
+            st.session_state["ai_view"] = "create"
             st.rerun()
 
     code, data, msg = api_call("GET", "/api/ai/problem-tasks/")
@@ -1600,7 +1603,7 @@ def render_ai_task_list():
             with row[0]:
                 if st.button(tid, key=f"ai_row_{tid}", use_container_width=True):
                     st.session_state["ai_task_id"] = tid
-                    st.session_state.pop("show_ai_history", None)
+                    st.session_state["ai_view"] = "detail"
                     st.rerun()
             row[1].markdown(
                 f"<span class=\"oj-tag {cls}\">{status_zh.get(stt, stt)}</span>",
@@ -1640,20 +1643,32 @@ def render_ai_problem():
                 code, data, msg = api_call("POST", "/api/ai/problem-tasks/", payload)
                 if code == 200:
                     st.session_state["ai_task_id"] = data["task_id"]
-                    st.success("任务已创建")
+                    st.session_state["ai_view"] = "detail"
+                    st.success("任务已创建，正在生成…")
                     st.rerun()
                 else:
                     st.error(f"创建失败: {msg}")
 
-    # 展示当前任务状态
+
+def render_ai_task_detail():
+    """AI 命题任务详情页（独立视图）：运行中轮询进度，完成后以题目表单展示可导入。"""
     task_id = st.session_state.get("ai_task_id")
-    if task_id:
-        render_ai_task_status(task_id)
+    if not task_id:
+        st.info("未指定任务")
+        if st.button("← 返回命题", key="ai_detail_back_empty"):
+            st.session_state["ai_view"] = "create"
+            st.rerun()
+        return
 
-
-def render_ai_task_status(task_id: str):
-    st.divider()
-    st.markdown(f"**任务 {task_id}**")
+    # 顶部：返回按钮 + 任务标题
+    head_l, head_r = st.columns([3, 1], vertical_alignment="center")
+    with head_l:
+        st.subheader(f"任务详情 {task_id}")
+    with head_r:
+        if st.button("← 返回命题", key="ai_detail_back", use_container_width=True):
+            st.session_state.pop("ai_task_id", None)
+            st.session_state["ai_view"] = "create"
+            st.rerun()
 
     code, data, msg = api_call("GET", f"/api/ai/problem-tasks/{task_id}")
     if code != 200:
@@ -1693,42 +1708,40 @@ def render_ai_task_status(task_id: str):
 
     # 运行中：自动轮询刷新进度，同时提供「中断任务」按钮
     if status in ("pending", "running"):
-        st.info(f"⏳ 任务进行中，正在自动刷新进度...")
+        st.info("⏳ 任务进行中，正在自动刷新进度…")
         with st.spinner(f"当前进度：{progress}"):
             time.sleep(1.5)
-        # 中断任务按钮（保留手动终止能力）
         if st.button("🛑 中断任务", key=f"ai_cancel_{task_id}", use_container_width=True):
             code, _, msg = api_call("PUT", f"/api/ai/problem-tasks/{task_id}/cancel")
             if code == 200:
                 st.warning("任务已中断")
             else:
                 st.error(msg)
-        # 自动轮询：无论是否点击中断，都刷新以获取最新状态
         st.rerun()
 
-    # 完成：展示结果 + 导入题目
-    if status == "completed" and result:
-        st.markdown("**生成的题目**")
-        st.json(result)
+    # 失败：给出提示（无结果可导入）
+    if status == "failed":
+        st.info("该任务命题失败，无题目可导入。可返回命题重新生成。")
+        return
 
-        st.markdown("**导入到题库**")
+    # 完成：以题目表单展示结果，可直接导入或修改后导入
+    if status == "completed" and result:
+        st.divider()
+        st.subheader("生成的题目")
         with st.form("ai_import_form"):
-            st.write("可直接导入，或修改后再导入")
-            result_json = st.text_area(
-                "题目 JSON", value=json.dumps(result, ensure_ascii=False, indent=2),
-                height=300,
-            )
-            if st.form_submit_button("导入题目"):
-                try:
-                    problem = json.loads(result_json)
-                except json.JSONDecodeError:
-                    st.error("JSON 格式错误")
-                    st.stop()
-                code, data, msg = api_call("POST", "/api/problems/", problem)
+            submitted, payload = _problem_form(prefill=result, pid_editable=True)
+        if submitted:
+            if payload is None:
+                st.error("样例/测试点必须是合法 JSON")
+            else:
+                code, data, msg = api_call("POST", "/api/problems/", payload)
                 if code == 200:
-                    st.success(f"题目 {data['id']} 已导入题库")
+                    st.success(f"题目 {data['id']} 已加入题库")
+                    st.session_state.pop("ai_task_id", None)
+                    st.session_state["ai_view"] = "create"
+                    st.rerun()
                 else:
-                    st.error(f"导入失败: {msg}")
+                    st.error(f"加入题库失败: {msg}")
 
 
 # ---------------------------------------------------------------- 主入口
