@@ -240,23 +240,23 @@ def inject_css():
             color: #8a9aa5;
             font-size: 14px;
         }
-        /* 删除按钮：红色调（通过 key 前缀 prob_del_ 定位） */
-        div[data-testid="stButton"][class*="st-key-prob_del"] button {
+        /* 删除按钮：红色调（st-key 类加在最外层 stElementContainer 上） */
+        div[data-testid="stElementContainer"][class*="st-key-prob_del"] button {
             border-color: #e0b4b4 !important;
             color: #c0392b !important;
             background: #fdf3f3 !important;
         }
-        div[data-testid="stButton"][class*="st-key-prob_del"] button:hover {
+        div[data-testid="stElementContainer"][class*="st-key-prob_del"] button:hover {
             border-color: #c0392b !important;
             background: #fbe4e4 !important;
         }
         /* 新增按钮：绿色调（key 固定 problem_create） */
-        div[data-testid="stButton"][class*="st-key-problem_create"] button {
+        div[data-testid="stElementContainer"][class*="st-key-problem_create"] button {
             background: #1e8e3e !important;
             border-color: #1e8e3e !important;
             color: #ffffff !important;
         }
-        div[data-testid="stButton"][class*="st-key-problem_create"] button:hover {
+        div[data-testid="stElementContainer"][class*="st-key-problem_create"] button:hover {
             background: #187a34 !important;
             border-color: #187a34 !important;
         }
