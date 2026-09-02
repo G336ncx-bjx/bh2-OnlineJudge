@@ -240,39 +240,23 @@ def inject_css():
             color: #8a9aa5;
             font-size: 14px;
         }
-        /* 题目行：一行内 信息(左) + 操作按钮(右) */
-        .oj-problem-row {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .oj-problem-row .oj-problem-info {
-            flex: 1 1 auto;
-            min-width: 0;
-        }
-        .oj-problem-row .oj-problem-actions {
-            flex: 0 0 auto;
-            display: flex;
-            gap: 6px;
-            align-items: center;
-        }
-        /* 删除按钮：红色调 */
-        .oj-danger-btn button {
+        /* 删除按钮：红色调（通过 key 前缀 prob_del_ 定位） */
+        div[data-testid="stButton"][class*="st-key-prob_del"] button {
             border-color: #e0b4b4 !important;
             color: #c0392b !important;
             background: #fdf3f3 !important;
         }
-        .oj-danger-btn button:hover {
+        div[data-testid="stButton"][class*="st-key-prob_del"] button:hover {
             border-color: #c0392b !important;
             background: #fbe4e4 !important;
         }
-        /* 新增按钮：绿色调 */
-        .oj-create-btn button {
+        /* 新增按钮：绿色调（key 固定 problem_create） */
+        div[data-testid="stButton"][class*="st-key-problem_create"] button {
             background: #1e8e3e !important;
             border-color: #1e8e3e !important;
             color: #ffffff !important;
         }
-        .oj-create-btn button:hover {
+        div[data-testid="stButton"][class*="st-key-problem_create"] button:hover {
             background: #187a34 !important;
             border-color: #187a34 !important;
         }
@@ -537,7 +521,6 @@ def render_problem_list():
     with head_l:
         st.subheader("题目列表")
     with head_r:
-        st.markdown('<div class="oj-create-btn"></div>', unsafe_allow_html=True)
         if st.button("➕ 新增题目", key="problem_create", use_container_width=True):
             st.session_state["problem_edit_id"] = None
             st.session_state["problem_view"] = "create"
@@ -565,7 +548,6 @@ def render_problem_list():
                 st.session_state["view_problem_id"] = pid
                 st.rerun()
         with act_col:
-            st.markdown('<div class="oj-problem-actions"></div>', unsafe_allow_html=True)
             b1, b2 = st.columns(2, gap="small")
             with b1:
                 if st.button("编辑", key=f"prob_edit_{pid}", use_container_width=True):
@@ -573,7 +555,6 @@ def render_problem_list():
                     st.session_state["problem_view"] = "edit"
                     st.rerun()
             with b2:
-                st.markdown('<div class="oj-danger-btn"></div>', unsafe_allow_html=True)
                 if st.button("删除", key=f"prob_del_{pid}", use_container_width=True):
                     code2, _, msg2 = api_call("DELETE", f"/api/problems/{pid}")
                     if code2 == 200:
