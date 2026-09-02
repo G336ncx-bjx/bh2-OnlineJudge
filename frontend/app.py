@@ -426,7 +426,12 @@ def _problem_payload(pid, title, description, input_desc, output_desc,
 def _problem_form(prefill: dict | None = None, pid_editable: bool = True):
     """题目表单（新增/编辑共用）。返回提交按钮是否被点击。"""
     p = prefill or {}
-    pid = st.text_input("题目 ID (必填)", value=p.get("id", ""), disabled=not pid_editable)
+    pid = st.text_input(
+        "题目标识 (必填)",
+        value=p.get("id", ""),
+        disabled=not pid_editable,
+        help="题目的唯一标识，用于内部检索，建议使用英文/数字（如 P1001），不会对普通用户展示",
+    )
     title = st.text_input("标题 (必填)", value=p.get("title", ""))
     description = st.text_area("题目描述 (必填)", value=p.get("description", ""))
     input_desc = st.text_area("输入格式说明 (必填)", value=p.get("input_description", ""))
@@ -478,16 +483,12 @@ def render_problem_list():
 
     for p in data:
         pid = p["id"]
+        title = p["title"]
         info_col, act_col = st.columns([4, 1.6], vertical_alignment="center")
         with info_col:
-            st.markdown(
-                f'<div class="oj-problem-row"><div class="oj-problem-info">'
-                f'<span style="font-weight:700;">{pid}</span>'
-                f'&nbsp;—&nbsp;{p["title"]}</div></div>',
-                unsafe_allow_html=True,
-            )
+            # 标题作为可点击按钮，点击进入详情（不展示内部 id）
             if st.button(
-                f"查看 {pid}",
+                title,
                 key=f"prob_view_{pid}",
                 use_container_width=True,
             ):
@@ -506,7 +507,7 @@ def render_problem_list():
                 if st.button("删除", key=f"prob_del_{pid}", use_container_width=True):
                     code2, _, msg2 = api_call("DELETE", f"/api/problems/{pid}")
                     if code2 == 200:
-                        st.success(f"题目 {pid} 已删除")
+                        st.success(f"题目「{title}」已删除")
                         st.rerun()
                     else:
                         st.error(f"删除失败: {msg2}")
@@ -570,10 +571,9 @@ def render_problem_detail():
     pid = st.session_state.get("view_problem_id")
     if not pid:
         return
-    st.subheader(f"题目详情: {pid}")
     code, data, msg = api_call("GET", f"/api/problems/{pid}")
     if code == 200:
-        st.markdown(f"### {data['title']}")
+        st.subheader(data["title"])
         st.write(data["description"])
         st.markdown("**输入格式**")
         st.write(data["input_description"])
