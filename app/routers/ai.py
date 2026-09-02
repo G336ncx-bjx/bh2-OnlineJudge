@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/ai", tags=["ai"])
 class ModelConfigBody(BaseModel):
     provider_url: str
     model: str
-    api_key: str
+    api_key: Optional[str] = None
     input_price: Optional[float] = None
     output_price: Optional[float] = None
     price_unit: Optional[int] = None
@@ -39,7 +39,9 @@ async def set_model_config(request: Request, body: ModelConfigBody):
     cfg = llm.get_model_config_raw()
     cfg["provider_url"] = body.provider_url
     cfg["model"] = body.model
-    cfg["api_key"] = body.api_key
+    # 密钥为空表示「不修改」，避免只改单价时把已存密钥清空
+    if body.api_key:
+        cfg["api_key"] = body.api_key
     if body.input_price is not None:
         cfg["input_price"] = body.input_price
     if body.output_price is not None:

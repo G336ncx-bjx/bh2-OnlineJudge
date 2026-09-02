@@ -1501,7 +1501,11 @@ def _ai_config_dialog():
             "模型名称", value=current.get("model", ""),
             placeholder="gpt-4o-mini",
         )
-        api_key = st.text_input("模型密钥 (API Key)", type="password")
+        api_key = st.text_input(
+            "模型密钥 (API Key)", type="password",
+            placeholder="留空表示不修改（已配置时不会回显）",
+            help="出于安全考虑不显示已保存的密钥；如需更换请直接输入新密钥，留空则保持原密钥不变。",
+        )
         col1, col2, col3 = st.columns(3)
         with col1:
             input_price = st.number_input(
@@ -1530,7 +1534,7 @@ def _ai_config_dialog():
             code, data, msg = api_call("PUT", "/api/ai/model-config", {
                 "provider_url": provider_url,
                 "model": model,
-                "api_key": api_key,
+                "api_key": api_key.strip() if api_key else None,
                 "input_price": input_price,
                 "output_price": output_price,
                 "price_unit": int(price_unit),
@@ -1538,6 +1542,8 @@ def _ai_config_dialog():
             })
             if code == 200:
                 st.success("模型配置已更新")
+                # 刷新主页面，使 render_ai 里的配置摘要（含密钥状态）立即更新
+                st.rerun()
             else:
                 st.error(f"配置失败: {msg}")
 
