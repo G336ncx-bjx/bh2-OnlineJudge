@@ -1505,6 +1505,15 @@ def _ai_config_dialog():
             price_unit = st.number_input(
                 "计价单位(Token)", value=int(current.get("price_unit", 1000000)),
             )
+        # 计价币种：默认美元，可切换为人民币等（如 DeepSeek 按人民币计价）
+        currency_zh = {"USD": "美元 (USD)", "CNY": "人民币 (CNY)"}
+        currency_reverse = {v: k for k, v in currency_zh.items()}
+        cur_key = current.get("currency", "USD")
+        currency = st.selectbox(
+            "计价币种",
+            list(currency_zh.values()),
+            index=list(currency_zh.keys()).index(cur_key) if cur_key in currency_zh else 0,
+        )
         if st.form_submit_button("保存配置"):
             code, data, msg = api_call("PUT", "/api/ai/model-config", {
                 "provider_url": provider_url,
@@ -1513,6 +1522,7 @@ def _ai_config_dialog():
                 "input_price": input_price,
                 "output_price": output_price,
                 "price_unit": int(price_unit),
+                "currency": currency_reverse.get(currency, currency),
             })
             if code == 200:
                 st.success("模型配置已更新")
@@ -1584,11 +1594,14 @@ def render_ai_task_status(task_id: str):
 
     # Token 用量与费用
     if usage:
+        currency = usage.get("currency", "USD")
+        currency_map = {"USD": ("$", "美元"), "CNY": ("¥", "人民币")}
+        symbol, cname = currency_map.get(currency, ("$", currency))
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("输入 Token", usage.get("input_tokens", 0))
         col2.metric("输出 Token", usage.get("output_tokens", 0))
         col3.metric("总 Token", usage.get("total_tokens", 0))
-        col4.metric("费用", f"${usage.get('cost', 0.0):.6f} 美元")
+        col4.metric("费用", f"{symbol}{usage.get('cost', 0.0):.6f} {cname}")
 
     # 运行中：刷新 + 中断按钮
     if status in ("pending", "running"):

@@ -52,6 +52,7 @@ def _save_task(task: dict) -> None:
 
 def _new_task(task_id: str, requirement: str, user_id: str,
               problem_id: Optional[str]) -> dict:
+    cfg = llm.get_model_config_raw()
     return {
         "task_id": task_id,
         "user_id": user_id,
@@ -65,7 +66,7 @@ def _new_task(task_id: str, requirement: str, user_id: str,
             "output_tokens": 0,
             "total_tokens": 0,
             "cost": 0.0,
-            "currency": "USD",
+            "currency": cfg.get("currency", "USD"),
         },
     }
 
@@ -84,6 +85,7 @@ def _accumulate_usage(task: dict, usage: dict) -> None:
         "output_tokens": u["output_tokens"],
         "total_tokens": u["total_tokens"],
     }, cfg)
+    u["currency"] = cfg.get("currency", "USD")
 
 
 def _build_requirement_prompt(task: dict) -> str:

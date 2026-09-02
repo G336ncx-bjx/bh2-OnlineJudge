@@ -19,6 +19,7 @@ class ModelConfigBody(BaseModel):
     input_price: Optional[float] = None
     output_price: Optional[float] = None
     price_unit: Optional[int] = None
+    currency: Optional[str] = None
 
 
 class ProblemTaskCreate(BaseModel):
@@ -45,6 +46,8 @@ async def set_model_config(request: Request, body: ModelConfigBody):
         cfg["output_price"] = body.output_price
     if body.price_unit is not None:
         cfg["price_unit"] = body.price_unit
+    if body.currency is not None:
+        cfg["currency"] = body.currency
     llm.save_model_config(cfg)
 
     return ok({
@@ -54,6 +57,7 @@ async def set_model_config(request: Request, body: ModelConfigBody):
         "input_price": cfg.get("input_price", 0.0),
         "output_price": cfg.get("output_price", 0.0),
         "price_unit": cfg.get("price_unit", 1000000),
+        "currency": cfg.get("currency", "USD"),
     }, "model config updated")
 
 

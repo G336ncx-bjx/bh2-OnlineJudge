@@ -21,6 +21,7 @@ def get_model_config() -> dict:
         "input_price": cfg.get("input_price", 0.0),
         "output_price": cfg.get("output_price", 0.0),
         "price_unit": cfg.get("price_unit", 1000000),
+        "currency": cfg.get("currency", "USD"),
     }
 
 
