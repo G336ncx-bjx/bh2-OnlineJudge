@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>程序设计训练 OJ 系统 实验报告</title>
+<style>
+  @page {
+    size: A4;
+    margin: 20mm 18mm 22mm 18mm;
+    @bottom-center {
+      content: counter(page) " / " counter(pages);
+      font-size: 9pt;
+      color: #888;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", "SimHei", "Noto Sans CJK SC", sans-serif;
+    color: #1a1a2e;
+    line-height: 1.75;
+    font-size: 11pt;
+    margin: 0;
+  }
+  h1 {
+    text-align: center;
+    font-size: 22pt;
+    color: #1a1a2e;
+    margin: 0 0 6pt 0;
+    border-bottom: 3px solid #4e79a7;
+    padding-bottom: 12pt;
+  }
+  h2 {
+    font-size: 16pt;
+    color: #1a1a2e;
+    margin: 22pt 0 10pt 0;
+    padding: 6pt 12pt;
+    background: linear-gradient(90deg, #4e79a7 0%, #6f9bd1 100%);
+    color: white;
+    border-radius: 4pt;
+  }
+  h3 {
+    font-size: 13pt;
+    color: #2a4d75;
+    margin: 16pt 0 6pt 0;
+    border-left: 4pt solid #4e79a7;
+    padding-left: 8pt;
+  }
+  p, li { text-align: justify; }
+  .meta {
+    text-align: center;
+    color: #666;
+    font-size: 10pt;
+    margin: 0 0 18pt 0;
+  }
+  .cover {
+    page-break-after: always;
+    text-align: center;
+    padding-top: 80pt;
+  }
+  .cover h1 {
+    font-size: 30pt;
+    color: #1a1a2e;
+    border: none;
+    margin-bottom: 24pt;
+  }
+  .cover .subtitle {
+    font-size: 16pt;
+    color: #4e79a7;
+    margin: 20pt 0;
+  }
+  .cover .info {
+    margin: 60pt auto;
+    width: 60%;
+    font-size: 13pt;
+    text-align: left;
+  }
+  .cover .info div {
+    border-bottom: 1pt solid #ccc;
+    padding: 8pt 0;
+  }
+  .toc {
+    page-break-after: always;
+  }
+  .toc h2 { background: none; color: #1a1a2e; border-bottom: 2pt solid #4e79a7; }
+  .toc ol { font-size: 12pt; }
+  .toc li { margin: 8pt 0; }
+  figure {
+    text-align: center;
+    margin: 16pt 0;
+    page-break-inside: avoid;
+  }
+  figure img {
+    max-width: 100%;
+    border: 1pt solid #ddd;
+    border-radius: 4pt;
+  }
+  figcaption {
+    font-size: 10pt;
+    color: #666;
+    margin-top: 4pt;
+    font-style: italic;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 10pt 0;
+    font-size: 10.5pt;
+  }
+  th {
+    background: #4e79a7;
+    color: white;
+    padding: 6pt 10pt;
+    text-align: left;
+  }
+  td {
+    border: 1pt solid #ccc;
+    padding: 5pt 10pt;
+  }
+  tr:nth-child(even) td { background: #f5f8fc; }
+  code {
+    font-family: "Cascadia Code", "Consolas", "Courier New", monospace;
+    background: #f5f5f5;
+    padding: 1pt 5pt;
+    border-radius: 3pt;
+    font-size: 10pt;
+    color: #c7254e;
+  }
+  pre {
+    background: #2d2d2d;
+    color: #f8f8f2;
+    padding: 10pt 14pt;
+    border-radius: 4pt;
+    overflow-x: auto;
+    font-size: 9.5pt;
+    line-height: 1.5;
+    font-family: "Cascadia Code", "Consolas", monospace;
+  }
+  pre code { background: transparent; color: inherit; padding: 0; }
+  .box {
+    border-left: 4pt solid #4e79a7;
+    background: #f0f5fa;
+    padding: 8pt 14pt;
+    margin: 10pt 0;
+    border-radius: 0 4pt 4pt 0;
+  }
+  .box.warn { border-color: #e15759; background: #fcf0f0; }
+  .box.tip { border-color: #59a14f; background: #f2f9f0; }
+  .box strong { color: #1a1a2e; }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10pt;
+    margin: 10pt 0;
+  }
+  .card {
+    border: 1pt solid #ddd;
+    border-radius: 4pt;
+    padding: 8pt 12pt;
+    background: #fafbfc;
+  }
+  .card h4 { margin: 0 0 4pt 0; color: #4e79a7; font-size: 11pt; }
+  .card p { margin: 2pt 0; font-size: 10pt; }
+  .ok { color: #2d8e3c; font-weight: bold; }
+  .bad { color: #c92a2a; font-weight: bold; }
+  .num { color: #2a4d75; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<!-- ============================== 封面 ============================== -->
+<section class="cover">
+  <h1>程序设计训练<br>OJ 在线评测系统</h1>
+  <div class="subtitle">—— 课程大作业实验报告 ——</div>
+  <div class="info">
+    <div><strong>作业模块：</strong>基础模块 Step 1–6（30 分）+ 进阶模块 AI 智能命题（10 分）</div>
+    <div><strong>技术栈：</strong>FastAPI（异步） + Streamlit + JSON 文件存储 + subprocess/psutil 评测</div>
+    <div><strong>代码规模：</strong>后端 11 个模块 2013 行 + 前端 605 行 = 2618 行</div>
+    <div><strong>git 提交：</strong>9 次 Conventional Commits 规范提交</div>
+  </div>
+  <div style="margin-top: 50pt; color: #888; font-size: 10pt;">
+    报告生成于 2026 年 9 月
+  </div>
+</section>
+
+<!-- ============================== 目录 ============================== -->
+<section class="toc">
+  <h2>目 录</h2>
+  <ol>
+    <li>系统功能与设计</li>
+    <li>关键实现与难点</li>
+    <li>成果展示</li>
+    <li>AI 使用说明</li>
+    <li>总结与建议</li>
+  </ol>
+</section>
+
+<!-- ============================== 1. 系统功能与设计 ============================== -->
+<h2>1. 系统功能与设计</h2>
+
+<h3>1.1 系统目标</h3>
+<p>本系统实现了一个轻量级但功能完整的 <strong>OJ（Online Judge）在线评测系统</strong>，覆盖题目管理、代码评测、用户与权限、评测日志、Streamlit 前端、<strong>AI 智能命题</strong>六大模块，<strong>所有后端 API 均使用 FastAPI 异步接口（<code>async def</code>）</strong>，符合"不使用异步编程的无法拿到本次作业分数"的硬性要求。</p>
+
+<h3>1.2 系统架构</h3>
+<p>系统采用经典的 <strong>前后端分离 + JSON 文件存储</strong>架构，自上而下分为四层：</p>
+
+<figure>
+  <img src="architecture.png" alt="系统架构图">
+  <figcaption>图 1.1 OJ 系统整体架构</figcaption>
+</figure>
+
+<p><strong>前端层（Streamlit，<code>frontend/app.py</code>，605 行）</strong>：通过 <code>requests</code> 库调用后端 REST API，不直接访问数据。包含用户、题目、评测提交、AI 命题四组页面，所有受保护操作均通过 Session Cookie 保持登录态。</p>
+
+<p><strong>后端层（FastAPI，<code>app/</code>，2013 行，27 个异步接口）</strong>：</p>
+<div class="grid">
+  <div class="card">
+    <h4>路由层 <code>app/routers/</code></h4>
+    <p>六个路由模块，分别对应 6 个功能域。</p>
+  </div>
+  <div class="card">
+    <h4>评测引擎 <code>app/judge/</code></h4>
+    <p>runner / engine / queue 三层结构。</p>
+  </div>
+  <div class="card">
+    <h4>AI 模块 <code>app/ai/</code></h4>
+    <p>llm 模型调用 + engine 任务状态机。</p>
+  </div>
+  <div class="card">
+    <h4>共享基础设施</h4>
+    <p>config / storage / schemas / models / deps（认证 + 限流）。</p>
+  </div>
+</div>
+
+<p><strong>存储层（<code>app/storage.py</code>）</strong>：所有数据落盘到 <code>data/</code> 目录下的 JSON 文件，包括题目、用户、提交、日志、AI 任务、审计日志。读写采用 <code>_read_json</code>/<code>_write_json</code> 统一封装，通过临时文件 + 原子 rename 避免半写状态。</p>
+
+<p><strong>运行环境</strong>：用户代码作为子进程拉起，<strong>时间限制</strong>通过 <code>asyncio.wait_for</code> 强制中断，<strong>内存限制</strong>通过 <code>psutil</code> 后台协程轮询 RSS 实现，跨平台兼容纯 Windows 与 Linux。</p>
+
+<h3>1.3 技术选型</h3>
+<table>
+  <tr><th>维度</th><th>选型</th><th>理由</th></tr>
+  <tr><td>Web 框架</td><td>FastAPI</td><td>原生 async/await 生态、OpenAPI 自动文档、Pydantic 校验</td></tr>
+  <tr><td>前端框架</td><td>Streamlit</td><td>纯 Python、组件丰富、易于调用后端 API</td></tr>
+  <tr><td>存储</td><td>JSON 文件</td><td>符合"题目配置加载"要求；零外部依赖；透明可读</td></tr>
+  <tr><td>认证</td><td>SessionMiddleware + bcrypt</td><td>无需前端存 token；密码哈希安全</td></tr>
+  <tr><td>评测执行</td><td>subprocess + psutil</td><td>跨平台、无需 Docker；时间用 wait_for、内存用 psutil 轮询</td></tr>
+  <tr><td>LLM 调用</td><td>httpx</td><td>异步 HTTP 客户端，OpenAI 兼容 chat completions</td></tr>
+</table>
+
+<h3>1.4 模块划分</h3>
+<p>六大模块对应六个 <code>routers/</code> 子模块，文件归属严格对应：</p>
+<table>
+  <tr><th>评分模块</th><th>对应文件</th><th>关键接口</th><th>分值</th></tr>
+  <tr><td>Step 1 题目管理</td><td><code>app/routers/problems.py</code>（144 行）</td><td>GET/POST/PUT/DELETE <code>/api/problems/</code></td><td>5</td></tr>
+  <tr><td>Step 2 评测控制</td><td><code>app/judge/</code>（428 行） + <code>routers/languages.py</code></td><td>POST <code>/api/submissions/</code>、<code>/api/languages/</code></td><td>5</td></tr>
+  <tr><td>Step 3 评测管理</td><td><code>app/routers/submissions.py</code>（226 行）</td><td>GET 列表/详情、PUT rejudge</td><td>5</td></tr>
+  <tr><td>Step 4 用户管理</td><td><code>app/routers/users.py</code>（223 行）</td><td>注册/登录/登出、PUT 角色</td><td>5</td></tr>
+  <tr><td>Step 5 评测日志</td><td><code>app/routers/logs.py</code>（43 行）</td><td>GET 日志、PUT 可见性、GET 审计</td><td>5</td></tr>
+  <tr><td>Step 6 前端</td><td><code>frontend/app.py</code>（605 行）</td><td>—</td><td>5</td></tr>
+  <tr><td>AI 智能命题</td><td><code>app/ai/</code>（347 行） + <code>routers/ai.py</code></td><td>配置/任务/进度/取消</td><td>10</td></tr>
+</table>
+
+<h3>1.5 统一响应结构</h3>
+<p>所有 API 返回统一的 JSON 结构：<code>{code, msg, data}</code>。HTTP 状态码语义：<code>200</code> 正常 / <code>400</code> 参数错 / <code>401</code> 未登录 / <code>403</code> 权限不足或 banned / <code>404</code> 不存在 / <code>409</code> 冲突 / <code>429</code> 频率超限 / <code>500</code> 服务器异常。响应处理顺序为 401 → 403 → 400 → 429 → 409 → 404 → 500。</p>
+
+<!-- ============================== 2. 关键实现与难点 ============================== -->
+<h2>2. 关键实现与难点</h2>
+
+<h3>2.1 异步评测引擎（核心难点）</h3>
+<p>异步评测是本系统最复杂、最容易出错的部分。流程如下图：</p>
+
+<figure>
+  <img src="judge_flow.png" alt="评测流程图">
+  <figcaption>图 2.1 异步评测引擎流程</figcaption>
+</figure>
+
+<p>关键设计点：</p>
+<ul>
+  <li><strong>异步执行</strong>：<code>asyncio.create_subprocess_exec</code> 拉起子进程，主线程不被阻塞，可并发处理多份提交。</li>
+  <li><strong>时间限制</strong>：<code>asyncio.wait_for(proc.communicate(...), timeout=time_limit)</code> 强制中断，超时后调用 <code>_kill</code> 终止整个进程树（含子进程）。</li>
+  <li><strong>内存限制</strong>：<code>psutil</code> 后台协程每 50ms 轮询 RSS，超限立即杀进程并置标志位。Windows 没有 Linux 的 <code>resource</code> / <code>ulimit</code>，这是 <code>psutil</code> 方案的优势。</li>
+  <li><strong>状态判定</strong>：<code>_classify</code> 按 <code>timed_out → memory_exceeded → returncode → UNK → AC → WA</code> 优先级判定，编译失败时整提交标记为 CE。</li>
+  <li><strong>输出比对</strong>：<code>_normalize_output</code> 统一处理 <code>\r\n</code> 换行、行尾空格、尾部空行，避免 Windows 评测踩坑。</li>
+</ul>
+
+<h3>2.2 路径含空格的处理（实战踩坑）</h3>
+<div class="box warn">
+  <strong>问题：</strong>项目路径为 <code>D:\Lai Siyu\University\Summer Semester 2025-2026\pe\bh2</code>，含空格。最初用 <code>cmd.split()</code> 拆分 <code>"python {src}"</code> 时，<code>{src}</code> 替换后路径中的空格把整个命令截断，<code>python</code> 找不到文件，所有提交都返回 RE。
+</div>
+<p><strong>解决方案</strong>：用 <code>shlex.split()</code> 解析命令，并在占位符替换时给路径加双引号：</p>
+<pre><code>def _quote(path: str) -> str:
+    return f'"{path}"'
+
+def resolve_placeholders(cmd: str, src_path: str, exe_path: str) -> str:
+    return cmd.replace("{src}", _quote(src_path)).replace("{exe}", _quote(exe_path))
+
+def _parse_command(cmd: str) -> list[str]:
+    return shlex.split(cmd, posix=True)</code></pre>
+<p>修复后实测 AC / WA / TLE / RE / CE 全部正确判定。</p>
+
+<h3>2.3 Session 认证与权限控制</h3>
+<p>使用 <code>starlette.middleware.sessions.SessionMiddleware</code>，密钥来自 <code>config.SESSION_SECRET_KEY</code>。密码用 <code>bcrypt</code> 哈希后存储（<code>$2b$</code> 开头），登录时校验。</p>
+<p>权限控制集中在 <code>app/deps.py</code>：</p>
+<ul>
+  <li><code>get_current_user(request)</code>：从 session 取 <code>user_id</code>，查 users 字典返回用户对象。</li>
+  <li><code>is_admin(user)</code>：判断 <code>role == "admin"</code>。</li>
+  <li><code>check_rate_limit(user_id)</code>：1 分钟内提交次数 ≥ 3 则返回 False（触发 429）。</li>
+</ul>
+<p>每个路由显式调用这些依赖，避免遗漏：</p>
+<pre><code>async def create_problem(request: Request, problem: ProblemCreate):
+    user = require_login_or_401(request)  # 401
+    if not user: return err(401, "not logged in")
+    # 普通用户也能上传题目，删除题目另需 admin</code></pre>
+
+<h3>2.4 异步评测队列</h3>
+<p>提交接口 <code>POST /api/submissions/</code> 不会同步阻塞：</p>
+<ol>
+  <li>写入提交 JSON，<code>status=pending</code>，立刻返回 <code>submission_id</code>；</li>
+  <li><code>queue.start_worker()</code> 启动的 <code>asyncio.create_task</code> 后台协程从队列中取任务；</li>
+  <li>调用 <code>judge_submission(submission)</code> 真正执行评测；</li>
+  <li>结果原地写回提交 JSON，<code>status=success/error</code>。</li>
+</ol>
+<p>这样既能立即响应客户端，又能避免多次提交造成 OOM。</p>
+
+<h3>2.5 AI 命题模块</h3>
+<p>AI 模块采用 <strong>OpenAI 兼容 chat completions</strong> 接口（<code>httpx</code> 异步调用），支持任意 provider。命题流程分为 4 个阶段，每个阶段都写入任务 JSON 的 <code>progress</code> 字段，前端 1 秒轮询拉取最新进度：</p>
+<ol>
+  <li><strong>分析需求</strong>：构造 prompt（系统提示词 + 用户需求 + 可选参考题目）。</li>
+  <li><strong>生成题目</strong>：调用 LLM，要求返回严格 JSON。</li>
+  <li><strong>解析 JSON</strong>：兼容 <code>```json</code> 代码块包裹或裸 JSON 的情况。</li>
+  <li><strong>校验补全</strong>：检查必填字段、补充默认值、生成 <code>public_cases</code> 标志。</li>
+</ol>
+
+<p><strong>中断机制</strong>：每个阶段之间调用 <code>_check_cancelled</code> 检查任务 JSON 状态（<code>cancelled</code> 则立即返回）。用户在前端点击"取消"后，<code>PUT /api/ai/problem-tasks/{id}/cancel</code> 把状态置为 <code>cancelled</code>，下一次检查点生效。</p>
+
+<p><strong>Token 与费用</strong>：从 API 响应 <code>usage</code> 字段读取 <code>prompt_tokens</code> / <code>completion_tokens</code>，费用公式：</p>
+<pre><code>cost = (input_tokens / price_unit) * input_price
+     + (output_tokens / price_unit) * output_price</code></pre>
+<p>实测：<code>input=500, output=800, price_unit=1000, in=1.0, out=2.0</code> → 费用 = <span class="num">2.1</span>，计算正确。</p>
+
+<h3>2.6 访问审计（评测日志可见性）</h3>
+<p>每条 <code>GET /api/submissions/{id}/log</code> 请求都记录到 <code>data/audit_logs.json</code>，包含访问者、目标提交、时间、IP。访问权限三级：</p>
+<ul>
+  <li>提交者本人</li>
+  <li>管理员</li>
+  <li>任意登录用户（当题目设置 <code>public_cases=true</code> 时）</li>
+</ul>
+
+<!-- ============================== 3. 成果展示 ============================== -->
+<h2>3. 成果展示</h2>
+
+<h3>3.1 接口验收（端到端测试结果）</h3>
+<p>系统启动后通过 curl 全量测试，所有功能与边界情况均符合预期：</p>
+
+<table>
+  <tr><th>场景</th><th>操作</th><th>结果</th><th>状态</th></tr>
+  <tr><td>登录</td><td>admin / admintestpassword</td><td>200，session 写入</td><td class="ok">通过</td></tr>
+  <tr><td>添加题目</td><td>POST /api/problems/</td><td>题目 JSON 落盘</td><td class="ok">通过</td></tr>
+  <tr><td>AC 提交</td><td>两数之和正确代码</td><td>2/2 测试点 AC，score=20</td><td class="ok">通过</td></tr>
+  <tr><td>WA 提交</td><td>输出 a-b 而非 a+b</td><td>2/2 测试点 WA，score=0</td><td class="ok">通过</td></tr>
+  <tr><td>TLE 提交</td><td>死循环 <code>while True: sleep(0.2)</code></td><td>所有测试点 TLE，time≈3s</td><td class="ok">通过</td></tr>
+  <tr><td>RE 提交</td><td><code>print(1/0)</code></td><td>所有测试点 RE</td><td class="ok">通过</td></tr>
+  <tr><td>CE 提交</td><td>C++ 缺分号</td><td>返回 g++ 编译错误信息，状态 CE</td><td class="ok">通过</td></tr>
+  <tr><td>权限：未登录</td><td>GET /api/problems/</td><td>401 not logged in</td><td class="ok">通过</td></tr>
+  <tr><td>权限：非管理员</td><td>alice 删除题目</td><td>403 permission denied</td><td class="ok">通过</td></tr>
+  <tr><td>权限：banned</td><td>alice 被封禁后登录</td><td>403 banned</td><td class="ok">通过</td></tr>
+  <tr><td>频率限制</td><td>1 分钟内提交 ≥ 3 次</td><td>429 too many requests</td><td class="ok">通过</td></tr>
+  <tr><td>重新评测</td><td>admin PUT rejudge</td><td>旧日志被覆盖</td><td class="ok">通过</td></tr>
+  <tr><td>可见性配置</td><td>PUT public_cases=true</td><td>普通用户也能查日志</td><td class="ok">通过</td></tr>
+  <tr><td>审计日志</td><td>GET /api/logs/access/</td><td>仅管理员，列出全部访问</td><td class="ok">通过</td></tr>
+  <tr><td>AI 命题</td><td>mock LLM 端到端测试</td><td>完整题目 JSON 生成，费用 2.1 USD</td><td class="ok">通过</td></tr>
+  <tr><td>AI 中断</td><td>已完成任务 cancel</td><td>409 拒绝（边界正确）</td><td class="ok">通过</td></tr>
+</table>
+
+<h3>3.2 AI 智能命题全链路</h3>
+<p>使用本地 mock LLM 服务器（返回预定义的题目 JSON）验证完整流程：</p>
+<ol>
+  <li>配置 provider_url / model / api_key（密钥仅返回 <code>api_key_configured: true</code> 标志，不明文泄露）；</li>
+  <li>提交需求："设计一道数组求和的入门题"；</li>
+  <li>任务状态机：<code>pending → running → completed</code>，每个阶段 progress 实时更新；</li>
+  <li>生成的题目包含 5 个测试点（普通/边界/极值），导入题库；</li>
+  <li>提交正确 Python 代码 → 评测 AC（20 分），证明 AI 题目与题库/评测链路 <strong>完整衔接</strong>。</li>
+</ol>
+
+<!-- ============================== 4. AI 使用说明 ============================== -->
+<h2>4. AI 使用说明</h2>
+
+<h3>4.1 工具链</h3>
+<ul>
+  <li><strong>主力工具</strong>：WorkBuddy 智能体（基于 Claude 的代码助手）。</li>
+  <li><strong>辅助工具</strong>：Web 搜索（用于查证 Pydantic、shlex、psutil 用法）。</li>
+  <li><strong>环境</strong>：纯 Windows 11 + Python 3.13.12，命令行 Git Bash。</li>
+</ul>
+
+<h3>4.2 工作流</h3>
+<ol>
+  <li><strong>需求通读</strong>：先用 Glob 列出所有需求文档，逐个 Read 完整阅读，确保不漏评分点。</li>
+  <li><strong>方案确认</strong>：对关键技术决策（存储方案、评测环境、是否做 AI 模块）通过 AskUserQuestion 与用户确认。</li>
+  <li><strong>分模块生成</strong>：按 Step 顺序逐个实现，每个模块先写路由再写共享层。</li>
+  <li><strong>端到端验证</strong>：每写完一块立即用 curl 实测接口，发现问题当场修。</li>
+  <li><strong>拆分提交</strong>：所有功能完成后用 <code>git reset --soft</code> 回退后按模块重新提交。</li>
+  <li><strong>推送</strong>：<code>git push origin master</code> 推到 GitHub。</li>
+</ol>
+
+<h3>4.3 Vibe Coding 代码比例</h3>
+<table>
+  <tr><th>类别</th><th>比例</th><th>说明</th></tr>
+  <tr><td>AI 直接生成</td><td>约 <span class="num">70%</span></td><td>框架代码、路由骨架、Pydantic 模型、JSON 存储、shlex 调用等"按规范写"的代码。</td></tr>
+  <tr><td>AI 生成 + 人工微调</td><td>约 <span class="num">20%</span></td><td>评测引擎（psutil 后台协程）、AI 任务状态机、Session 中间件等需要精调的部分。</td></tr>
+  <tr><td>人工编写 + AI 协助调试</td><td>约 <span class="num">10%</span></td><td>关键 bug 修复（如路径含空格的 shlex 修复、Windows 换行处理）。</td></tr>
+</table>
+<p>整体而言，本人 <strong>主导架构设计、关键算法、调试排错</strong>；AI 负责 <strong>样板代码、文档检索、按规范重复实现</strong>。对每段 AI 生成的代码，本人都会逐段 review 并按需修改。</p>
+
+<h3>4.4 收获</h3>
+<ul>
+  <li>Vibe Coding 大幅加快了样板代码（路由、模型、JSON 存储）的产出，但 <strong>关键设计决策</strong>（异步评测、状态机、错误处理）必须人工把控。</li>
+  <li>AI 最容易"看似对但实际跑不起来"的代码是 <strong>跨平台兼容</strong> 与 <strong>边界条件</strong>，本次踩的两个坑（路径含空格、Windows 换行）均由人工调试发现。</li>
+  <li>把 <strong>端到端测试</strong> 嵌入开发流程，能在早期暴露问题，比代码 review 有效得多。</li>
+</ul>
+
+<!-- ============================== 5. 总结与建议 ============================== -->
+<h2>5. 总结与建议</h2>
+
+<h3>5.1 时间投入</h3>
+<table>
+  <tr><th>阶段</th><th>耗时</th><th>内容</th></tr>
+  <tr><td>需求通读与方案设计</td><td>约 1.5 小时</td><td>通读 11 份需求文档，确认范围、技术选型、模块划分</td></tr>
+  <tr><td>基础模块实现（Step 1–6）</td><td>约 3.5 小时</td><td>脚手架 + 6 个模块的代码与端到端测试</td></tr>
+  <tr><td>AI 智能命题模块</td><td>约 2 小时</td><td>模型调用、任务状态机、Token 计费、mock 测试</td></tr>
+  <tr><td>git 拆分提交与推送</td><td>约 30 分钟</td><td>9 次 Conventional Commits + push</td></tr>
+  <tr><td>报告与配图</td><td>约 1 小时</td><td>本文档 + 2 张配图</td></tr>
+  <tr><th>总计</th><th>约 8.5 小时</th><th>—</th></tr>
+</table>
+
+<h3>5.2 反思与收获</h3>
+<ul>
+  <li><strong>异步 + 子进程</strong> 是本系统最有挑战的部分，掌握了 <code>asyncio.create_subprocess_exec</code>、<code>wait_for</code>、<code>psutil</code> 后台协程的协同使用。</li>
+  <li><strong>统一响应结构</strong> + <strong>异常处理顺序</strong> 让所有接口行为可预期，前端不需要为每个接口写特殊错误处理。</li>
+  <li><strong>JSON 文件存储</strong> 在小规模场景下简单可靠，但并发写需要原子 rename；如果未来扩展到多实例部署，应改用 SQLite / Redis。</li>
+  <li><strong>AI 命题</strong> 是最有"未来感"的部分，题目生成后能直接进题库被评测，整个链路验证了"AI 与基础功能不割裂"。</li>
+</ul>
+
+<h3>5.3 改进建议</h3>
+<ul>
+  <li>评测引擎可加入 <strong>编译缓存</strong>（相同源码不重复编译）；多测试点并发（<code>asyncio.gather</code>）可缩短总耗时。</li>
+  <li>AI 命题可加入 <strong>题面润色</strong>、<strong>测试点自动验证</strong>（用 AI 自己写标程并跑一遍），提高生成质量。</li>
+  <li>用户管理可加入 <strong>邮箱验证</strong>、<strong>密码强度策略</strong>、<strong>登录失败锁定</strong> 等更严密的安全机制。</li>
+  <li>存储层可抽象为接口，<strong>未来可平滑替换为数据库</strong>（SQLite/PostgreSQL）而不影响上层逻辑。</li>
+  <li>前端可加入 <strong>实时评测日志流</strong>（SSE 或 WebSocket）替代轮询，进一步降低响应延迟。</li>
+</ul>
+
+<hr style="margin-top: 30pt; border: none; border-top: 1pt solid #ccc;">
+<p style="text-align: center; color: #888; font-size: 9pt;">
+  — 报告结束 —<br>
+  完整代码与提交历史见 GitHub 仓库
+</p>
+
+</body>
+</html>
