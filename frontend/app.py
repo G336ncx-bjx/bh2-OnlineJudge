@@ -763,7 +763,7 @@ def _paginated_list(key, items, row_renderer, page_size=10):
     if total_pages <= 1:
         return
 
-    # 分页控件：上一页 / 页码 / 下一页
+    # 分页控件：上一页 / 页码信息+跳转 / 下一页
     st.markdown("---")
     p_prev, p_mid, p_next = st.columns([1, 2, 1], vertical_alignment="center")
     with p_prev:
@@ -777,10 +777,29 @@ def _paginated_list(key, items, row_renderer, page_size=10):
             st.session_state[page_key] = cur + 1
             st.rerun()
     with p_mid:
-        st.markdown(
-            f"第 {cur + 1} / {total_pages} 页 · 共 {total} 条",
-            text_alignment="center",
-        )
+        # 页码信息 + 输入页码跳转（数字输入框 + 跳转按钮，同排）
+        j_info, j_input, j_btn = st.columns([1.6, 1, 0.7], gap="small",
+                                            vertical_alignment="center")
+        with j_info:
+            st.markdown(
+                f"第 {cur + 1} / {total_pages} 页 · 共 {total} 条",
+                text_alignment="right",
+            )
+        with j_input:
+            jump_to = st.number_input(
+                "跳转页码", min_value=1, max_value=total_pages,
+                value=cur + 1, key=f"{page_key}_jump", label_visibility="collapsed",
+            )
+        with j_btn:
+            if st.button("跳转", key=f"{page_key}_go", use_container_width=True):
+                # 越界保护（number_input 已限制范围，双保险）
+                target = int(jump_to) - 1
+                if target < 0:
+                    target = 0
+                elif target >= total_pages:
+                    target = total_pages - 1
+                st.session_state[page_key] = target
+                st.rerun()
 
 
 def render_problem_list():
