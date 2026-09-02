@@ -111,10 +111,26 @@ def inject_css():
             font-size: 13px;
             white-space: nowrap !important;
             transition: all .15s ease;
+            margin-top: 6px;
         }
         .oj-navbtn button:hover {
             border-color: #1a2a6c;
             color: #1a2a6c;
+        }
+        /* 顶栏右侧退出按钮：小巧、右对齐、文字不截断 */
+        .oj-logout-wrap button {
+            width: auto;
+            border-radius: 8px;
+            border: 1px solid #d6dfe4;
+            padding: 4px 10px;
+            font-size: 12px;
+            white-space: nowrap !important;
+            min-height: 30px;
+            margin-top: 6px;
+        }
+        .oj-logout-wrap {
+            display: flex;
+            justify-content: flex-end;
         }
         /* 用户区文字 */
         .oj-user-name {
@@ -185,18 +201,24 @@ def render_topbar():
                     st.session_state["menu"] = name
                     st.rerun()
 
-    # 右：用户信息
+    # 右：用户信息（含退出登录按钮，登录后显示）
     with col_user:
         if is_logged_in() and current_user():
             u = current_user()
             role_map = {"admin": "管理员", "user": "用户", "banned": "已封禁"}
             role_text = role_map.get(u["role"], u["role"])
-            st.markdown(
-                f'<div style="text-align:right;line-height:1.4;padding-top:6px;">'
-                f'<span class="oj-user-name">{u["username"]}</span>'
-                f'<span class="oj-user-role">{role_text}</span></div>',
-                unsafe_allow_html=True,
-            )
+            ucol_name, ucol_btn = st.columns([2.6, 1.6], gap="small")
+            with ucol_name:
+                st.markdown(
+                    f'<div style="text-align:right;line-height:1.4;padding-top:10px;">'
+                    f'<span class="oj-user-name">{u["username"]}</span>'
+                    f'<span class="oj-user-role">{role_text}</span></div>',
+                    unsafe_allow_html=True,
+                )
+            with ucol_btn:
+                st.markdown('<div class="oj-logout-wrap"></div>', unsafe_allow_html=True)
+                if st.button("退出登录", key="topbar_logout"):
+                    logout()
         else:
             st.markdown(
                 '<div style="text-align:right;line-height:2.6;">'
@@ -206,16 +228,6 @@ def render_topbar():
 
     st.markdown('<div class="oj-divider"></div>', unsafe_allow_html=True)
     return current
-
-
-def render_logout_button():
-    """退出登录按钮（登录后显示）。"""
-    if is_logged_in() and current_user():
-        st.markdown('<div style="height:4px;"></div>', unsafe_allow_html=True)
-        cols = st.columns([5, 1])
-        with cols[1]:
-            if st.button("退出登录", key="topbar_logout", use_container_width=True):
-                logout()
 
 
 # ---------------------------------------------------------------- 用户页面
@@ -760,8 +772,6 @@ def main():
     if not is_logged_in():
         render_login()
         return
-
-    render_logout_button()
 
     if menu == "用户":
         render_user_info()
