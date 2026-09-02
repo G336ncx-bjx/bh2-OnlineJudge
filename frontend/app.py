@@ -98,7 +98,7 @@ def inject_css():
         }
         /* 顶栏标题 */
         .oj-title {
-            font-size: 21px;
+            font-size: 20px;
             font-weight: 800;
             color: #1a2a6c;
             letter-spacing: 1px;
@@ -109,6 +109,11 @@ def inject_css():
             font-size: 10px;
             color: #8a9aa5;
             letter-spacing: 2px;
+            white-space: nowrap;
+        }
+        /* 左标题区容器：防溢出重叠 */
+        .oj-brand {
+            overflow: hidden;
             white-space: nowrap;
         }
         /* 导航按钮：胶囊样式，保证完整可点击、不换行 */
@@ -187,13 +192,13 @@ def render_topbar():
 
         # 三区布局：左标题 / 中导航 / 右用户（垂直居中对齐）
         col_brand, col_nav, col_user = st.columns(
-            [1.2, 4.2, 1.3], gap="small", vertical_alignment="center"
+            [1.7, 4.0, 1.4], gap="small", vertical_alignment="center"
         )
 
         # 左：logo + 标题
         with col_brand:
             st.markdown(
-                '<div style="display:flex;align-items:center;gap:10px;">'
+                '<div class="oj-brand" style="display:flex;align-items:center;gap:10px;">'
                 '<span style="font-size:26px;line-height:1;">⚖️</span>'
                 '<span style="display:flex;flex-direction:column;line-height:1.2;">'
                 '<span class="oj-title">OJ 在线评测系统</span>'
