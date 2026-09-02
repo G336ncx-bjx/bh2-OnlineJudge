@@ -91,10 +91,10 @@ def _restore_session():
     """
     if "session_cookie" in st.session_state:
         return
-    # 刚退出登录（logout 已清 cookie 并设置本标记）→ 跳过读回，避免把已删除的旧会话恢复回来。
-    # 该标记随 rerun 保留；页面刷新后 session_state 清空、标记消失，才会重新从 localStorage 读回。
+    # 已退出登录（logout 已清 cookie 并设置本标记）→ 持续跳过读回，避免把旧会话恢复回来。
+    # 该标记随 rerun 保留，直到用户重新登录成功才清除；页面刷新后 session_state 清空、
+    # 标记消失，才会重新从 localStorage 读回（此时后端 session 已失效，读回的 cookie 也无效）。
     if st.session_state.get("_logged_out"):
-        st.session_state.pop("_logged_out", None)
         return
     # 通过 streamlit_javascript.st_javascript 从浏览器 localStorage 同步读回会话。
     # 该库内部用 components.html + setComponentValue 正确封装了「浏览器→Python」回传，
@@ -461,6 +461,7 @@ def render_login():
                 )
                 if code == 200:
                     st.session_state["user_info"] = data
+                    st.session_state.pop("_logged_out", None)
                     _persist_session()
                     st.success("登录成功")
                     st.rerun()
