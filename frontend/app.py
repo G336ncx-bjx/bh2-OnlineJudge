@@ -268,6 +268,11 @@ def render_topbar():
                         use_container_width=True,
                     ):
                         st.session_state["menu"] = name
+                        # 点顶栏「题目」总是回到题目列表页，清除子视图状态
+                        if name == "题目":
+                            st.session_state.pop("view_problem_id", None)
+                            st.session_state.pop("problem_view", None)
+                            st.session_state.pop("problem_edit_id", None)
                         st.rerun()
 
         # 右：用户信息（含退出登录按钮，登录后显示）
