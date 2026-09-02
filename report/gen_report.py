@@ -446,34 +446,37 @@ def _parse_command(cmd: str) -> list[str]:
 
 <h3>4.1 工具链</h3>
 <ul>
-  <li><strong>主力工具</strong>：WorkBuddy 智能体（基于大模型的代码助手），负责架构方案讨论、分模块编码、调试排错、代码 review。</li>
+  <li><strong>主力工具</strong>：WorkBuddy 智能体（基于大模型的代码助手），承担分模块编码、调试排错、代码 review 等实现工作。</li>
   <li><strong>辅助工具</strong>：Web 搜索（查证 Pydantic、shlex、psutil、httpx、Streamlit 用法）。</li>
   <li><strong>环境</strong>：纯 Windows 11 + Python 3.13.12，命令行 Git Bash；后端 FastAPI + 前端 Streamlit 分离启动。</li>
 </ul>
 
 <h3>4.2 工作流</h3>
 <ol>
-  <li><strong>需求通读</strong>：先用 Glob 列出所有需求文档，逐个 Read 完整阅读（11 份），确保不漏评分点。</li>
-  <li><strong>方案确认</strong>：对关键技术决策（存储方案、评测环境、是否做 AI 模块、AI 计费币种）与用户确认。</li>
-  <li><strong>分模块生成</strong>：按 Step 顺序逐个实现，每个模块先写路由再写共享层，边写边用 curl 实测。</li>
-  <li><strong>端到端验证</strong>：每写完一块立即实测接口，发现问题当场修；AI 命题用真实 DeepSeek 跑通全链路。</li>
+  <li><strong>需求通读</strong>：本人先完整阅读全部 11 份需求文档，梳理评分点与功能边界。</li>
+  <li><strong>需求转化为自然语言指令</strong>：本人将每个功能点描述为明确的目标、约束与验收标准，交给 AI 执行。</li>
+  <li><strong>AI 分模块生成</strong>：AI 按 Step 顺序逐个实现，每个模块先写路由再写共享层，边写边由本人用 curl 实测。</li>
+  <li><strong>本人端到端验收</strong>：每写完一块立即实测接口，发现 bug 就向 AI 复现现象并让其定位修复；AI 命题用真实 DeepSeek 跑通全链路。</li>
   <li><strong>持续提交</strong>：每完成一个功能点就按 Conventional Commits 规范拆分提交并 push，而非一次性提交。</li>
 </ol>
 
 <h3>4.3 Vibe Coding 代码比例</h3>
+<p>本项目的代码 <strong>绝大部分由 AI 直接生成</strong>（约 <span class="num">90%</span> 以上），本人通过自然语言描述需求驱动 AI 产出，再逐段验收、反馈问题、迭代修正。实际分工如下：</p>
 <table>
-  <tr><th>类别</th><th>比例</th><th>说明</th></tr>
-  <tr><td>AI 直接生成</td><td>约 <span class="num">70%</span></td><td>框架代码、路由骨架、Pydantic 模型、JSON 存储、表单布局等"按规范写"的样板代码。</td></tr>
-  <tr><td>AI 生成 + 人工微调</td><td>约 <span class="num">20%</span></td><td>评测引擎（psutil 后台协程）、AI 任务状态机与分阶段生成、Session 持久化等需要精调的部分。</td></tr>
-  <tr><td>人工编写 + AI 协助调试</td><td>约 <span class="num">10%</span></td><td>关键 bug 修复（路径含空格 shlex 修复、JSON 截断兜底修复、中断真正取消协程、登录态竞态）。</td></tr>
+  <tr><th>环节</th><th>承担方</th><th>说明</th></tr>
+  <tr><td>需求拆解与描述</td><td>本人</td><td>通读 11 份要求文档，将评分点转化为可执行的自然语言需求，逐条向 AI 描述目标、边界与验收标准。</td></tr>
+  <tr><td>代码编写</td><td>AI 为主</td><td>路由、Pydantic 模型、JSON 存储、异步评测引擎、AI 命题任务、Streamlit 前端等几乎全部由 AI 生成。</td></tr>
+  <tr><td>验收与测试</td><td>本人</td><td>逐项对照要求文档核对功能，用 curl / 真实 DeepSeek 出题 / 浏览器实测，发现并定位问题。</td></tr>
+  <tr><td>缺陷反馈与迭代</td><td>本人 + AI</td><td>本人描述 bug 现象（如"刷新回登录页""改单价丢密钥""输出被截断""中断未真正停止"），AI 定位根因并修复。</td></tr>
 </table>
-<p>整体而言，本人 <strong>主导架构设计、关键算法、调试排错</strong>；AI 负责 <strong>样板代码、文档检索、按规范重复实现</strong>。对每段 AI 生成的代码，本人都会逐段 review 并按需修改，尤其对异步并发、边界条件、跨平台兼容等易错点重点把关。</p>
+<p>也就是说，这是一次典型的 <strong>Vibe Coding</strong> 实践：本人扮演"产品经理 + 测试"角色，负责定义要做什么、判断做得对不对；AI 扮演"工程师"，负责具体实现。本人不逐行手写代码，但<strong>全程主导方向、逐项验收、对最终交付质量负责</strong>。</p>
 
 <h3>4.4 收获</h3>
 <ul>
-  <li>Vibe Coding 大幅加快了样板代码（路由、模型、JSON 存储）的产出，但 <strong>关键设计决策</strong>（异步评测、任务状态机、中断机制、会话持久化）必须人工把控。</li>
-  <li>AI 最容易"看似对但实际跑不起来"的代码是 <strong>跨平台兼容</strong>、<strong>边界条件</strong> 与 <strong>异步时序竞态</strong>，本次踩的坑（路径含空格、Windows 换行、输出截断、刷新会话竞态）均由人工调试发现。</li>
-  <li>把 <strong>端到端测试</strong> 嵌入开发流程，能在早期暴露问题，比纯代码 review 有效得多。</li>
+  <li>Vibe Coding 的核心能力不在"写代码"，而在 <strong>把需求讲清楚、把问题定位准</strong>：本次多个 bug（刷新会话竞态、密钥被空值覆盖、JSON 输出截断、中断未真正终止）都是靠本人准确复现现象、AI 才得以快速修复。</li>
+  <li>AI 最容易"看似对但实际跑不起来"的代码是 <strong>跨平台兼容</strong>、<strong>边界条件</strong> 与 <strong>异步时序竞态</strong>；这些坑往往要在真实运行（而非静态阅读代码）中才会暴露。</li>
+  <li>把 <strong>端到端测试</strong> 嵌入开发流程，能在早期暴露问题，比单纯相信 AI 的"已完成"表述有效得多——每次都必须实测验收，不能只看代码。</li>
+  <li>诚实评估 AI 参与度很重要：AI 承担了绝大部分实现劳动，但<strong>需求的理解、方向的判断、质量的把关</strong>仍需本人完成，两者缺一不可。</li>
 </ul>
 
 <!-- ============================== 5. 总结与建议 ============================== -->
