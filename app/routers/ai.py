@@ -103,6 +103,56 @@ async def create_problem_task(request: Request, body: ProblemTaskCreate):
     return ok({"task_id": task_id, "status": "pending"}, "task created")
 
 
+@router.get("/problem-tasks/")
+async def list_problem_tasks(
+    request: Request,
+    status: str = None,
+    page: int = None,
+    page_size: int = None,
+):
+    user = get_current_user(request)
+    if user is None:
+        return err(401, "未登录")
+    if user.get("role") == "banned":
+        return err(403, "用户已被封禁")
+
+    if page is not None and page_size is None:
+        return err(400, "提供 page 时必须同时提供 page_size")
+
+    ids = engine.list_task_ids()
+    tasks = []
+    for tid in ids:
+        t = engine._get_task(tid)
+        if t is None:
+            continue
+        # 非管理员只能看自己的任务
+        if not is_admin(user) and t.get("user_id") != user["user_id"]:
+            continue
+        if status is not None and t.get("status") != status:
+            continue
+        tasks.append(t)
+
+    # 按创建时间倒序（新任务在前）
+    tasks.sort(key=lambda x: x.get("created_time", ""), reverse=True)
+    total = len(tasks)
+
+    if page is not None and page_size is not None:
+        start = (page - 1) * page_size
+        tasks = tasks[start:start + page_size]
+
+    result = []
+    for t in tasks:
+        result.append({
+            "task_id": t["task_id"],
+            "status": t.get("status", ""),
+            "requirement": t.get("requirement", ""),
+            "problem_id": t.get("problem_id"),
+            "created_time": t.get("created_time", ""),
+            "usage": t.get("usage", {}),
+        })
+    return ok({"total": total, "tasks": result})
+
+
 @router.get("/problem-tasks/{task_id}")
 async def get_problem_task(request: Request, task_id: str):
     user = get_current_user(request)

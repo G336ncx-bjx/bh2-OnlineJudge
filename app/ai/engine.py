@@ -6,12 +6,13 @@
 """
 import asyncio
 import json
+import os
 from typing import Optional
 
 from .. import config, storage
 from . import llm
 
-# 命题系统提示词：引导模型输出完整题目 JSON
+# 命题系统提示词（阶段一）：只生成题目主体，不含 testcases（测试点由阶段二单独生成）
 SYSTEM_PROMPT = """你是一名资深的 OJ（在线评测）出题人。请根据用户的命题需求，设计一道完整的编程题。
 
 你必须输出一个合法的 JSON 对象，不要包含任何额外文字，字段如下：
@@ -23,7 +24,6 @@ SYSTEM_PROMPT = """你是一名资深的 OJ（在线评测）出题人。请根�
   "output_description": "输出格式说明",
   "samples": [{"input": "样例输入", "output": "样例输出"}],
   "constraints": "数据范围与限制",
-  "testcases": [{"input": "测试输入", "output": "测试输出"}],
   "hint": "提示（可选）",
   "source": "来源（可选）",
   "tags": ["标签"],
@@ -33,16 +33,45 @@ SYSTEM_PROMPT = """你是一名资深的 OJ（在线评测）出题人。请根�
 }
 
 要求：
-1. 测试用例（testcases）必须覆盖边界条件，包括：最小/最大输入、普通情况、特殊情况（如空输入、负数、极值等），至少 5 个测试点。
-2. 数据规模要能区分不同时间复杂度的算法（如 O(n) vs O(n^2)）。
-3. 题目必须紧扣用户指定的知识点和难度。
-4. samples 与 testcases 的输入输出必须严格一致、可验证。
+1. 题目必须紧扣用户指定的知识点和难度。
+2. 数据规模要能区分不同时间复杂度的算法（如 O(n) vs O(n^2)），并写清楚在 constraints 中。
+3. 样例（samples）至少 2 组，输入输出必须严格一致、可验证。
+4. 只输出上述字段，不要包含 testcases（测试点会另行生成）。
+"""
+
+# 命题系统提示词（阶段二）：只生成测试点
+TESTCASE_PROMPT = """你是 OJ 测试点设计专家。下面是一道已设计好的编程题，请为它生成测试用例（testcases）。
+
+题目信息：
+{problem}
+
+你必须输出一个合法的 JSON 对象，不要包含任何额外文字，字段如下：
+{{
+  "testcases": [{{"input": "测试输入", "output": "测试输出"}}]
+}}
+
+要求：
+1. 测试用例必须覆盖边界条件：最小规模、最大规模、普通情况、特殊情况（如空输入、负数、极值、单元素等）。
+2. 至少 5 个测试点，且要能卡掉常见的错误解法（如暴力算法、错误的贪心）。
+3. 每个测试点的 input 必须是完整、可直接运行的输入（不允许省略、不允许写「略」或占位符）。
+4. 每个测试点的 output 必须是与 input 严格对应的正确输出。
+5. 输入输出格式必须严格符合题目的 input_description / output_description。
 """
 
 
 def _get_task(task_id: str) -> Optional[dict]:
     path = config.AI_TASKS_DIR + "/" + task_id + ".json"
     return storage._read_json(path, None)
+
+
+def list_task_ids() -> list[str]:
+    """返回所有 AI 命题任务 id（按文件名排序）。"""
+    if not os.path.isdir(config.AI_TASKS_DIR):
+        return []
+    ids = [
+        f[:-5] for f in os.listdir(config.AI_TASKS_DIR) if f.endswith(".json")
+    ]
+    return sorted(ids)
 
 
 def _save_task(task: dict) -> None:
@@ -60,6 +89,7 @@ def _new_task(task_id: str, requirement: str, user_id: str,
         "problem_id": problem_id,
         "status": "pending",
         "progress": "任务已创建，等待执行",
+        "created_time": storage.now_str(),
         "result": None,
         "usage": {
             "input_tokens": 0,
@@ -122,7 +152,7 @@ async def run_problem_task(task_id: str) -> None:
     _save_task(task)
 
     try:
-        # 阶段 1：生成题目
+        # 阶段 1：生成题目主体（不含 testcases，控制单次输出长度）
         if await _check_cancelled(task_id):
             return
         task["progress"] = "正在设计题目内容"
@@ -149,10 +179,25 @@ async def run_problem_task(task_id: str) -> None:
             _save_task(task)
             return
 
-        # 阶段 3：校验并补全字段
+        # 阶段 3：生成测试点（单独一次调用，避免整题过长被截断）
         if await _check_cancelled(task_id):
             return
-        task["progress"] = "正在校验并生成测试点"
+        task["progress"] = "正在生成测试点"
+        _save_task(task)
+
+        testcases = await _generate_testcases(task, problem)
+        if testcases is None:
+            task["status"] = "failed"
+            task["progress"] = "测试点生成失败"
+            task["error_info"] = "测试点生成失败：模型返回内容无法解析"
+            _save_task(task)
+            return
+        problem["testcases"] = testcases
+
+        # 阶段 4：校验并补全字段
+        if await _check_cancelled(task_id):
+            return
+        task["progress"] = "正在校验题目配置"
         _save_task(task)
 
         problem = _normalize_problem(problem)
@@ -179,6 +224,37 @@ async def run_problem_task(task_id: str) -> None:
         task["progress"] = f"命题失败: {type(e).__name__}"
         task["error_info"] = f"命题出错: {e}"
         _save_task(task)
+
+
+async def _generate_testcases(task: dict, problem: dict) -> Optional[list]:
+    """阶段二：单独调用模型为题目生成测试点，返回 testcases 列表（失败返回 None）。
+
+    把题目主体序列化成精简 JSON 作为上下文传给模型，让模型只输出测试点，
+    避免「整题+测试点」一次性输出过长导致被 max_tokens 截断。
+    """
+    summary = {
+        "title": problem.get("title", ""),
+        "description": problem.get("description", ""),
+        "input_description": problem.get("input_description", ""),
+        "output_description": problem.get("output_description", ""),
+        "samples": problem.get("samples", []),
+        "constraints": problem.get("constraints", ""),
+    }
+    problem_text = json.dumps(summary, ensure_ascii=False, indent=2)
+
+    content, usage = await llm.call_llm([
+        {"role": "system", "content": TESTCASE_PROMPT.format(problem=problem_text)},
+        {"role": "user", "content": "请为上述题目生成测试点。"},
+    ])
+    _accumulate_usage(task, usage)
+
+    parsed = llm.parse_problem_json(content)
+    if not parsed or not isinstance(parsed.get("testcases"), list):
+        return None
+    testcases = parsed["testcases"]
+    if not testcases:
+        return None
+    return testcases
 
 
 def _normalize_problem(problem: dict) -> Optional[dict]:

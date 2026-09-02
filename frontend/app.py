@@ -1452,13 +1452,19 @@ def render_user_admin():
 
 # ---------------------------------------------------------------- AI 命题页面
 def render_ai():
-    # 标题行：左「AI 智能命题」+ 右「模型配置」按钮（点击弹窗，不刷新当前页面）
-    head_l, head_r = st.columns([3, 1], vertical_alignment="center")
+    # 标题行：左「AI 智能命题」+ 右「历史任务」「模型配置」按钮（点击弹窗，不刷新当前页面）
+    head_l, head_r = st.columns([3, 2], vertical_alignment="center")
     with head_l:
         st.subheader("AI 智能命题")
     with head_r:
-        if st.button("⚙️ 模型配置", key="ai_model_config", use_container_width=True):
-            _ai_config_dialog()
+        b1, b2 = st.columns(2, gap="small")
+        with b1:
+            if st.button("📋 历史任务", key="ai_task_history", use_container_width=True):
+                st.session_state["show_ai_history"] = True
+                st.rerun()
+        with b2:
+            if st.button("⚙️ 模型配置", key="ai_model_config", use_container_width=True):
+                _ai_config_dialog()
 
     # 展示当前模型配置摘要（若有）
     code, cfg, _ = api_call("GET", "/api/ai/model-config")
@@ -1469,8 +1475,11 @@ def render_ai():
             f"（密钥{'已' if current.get('api_key_configured') else '未'}配置）"
         )
 
-    # 主体：智能命题表单（不再用 tab 并列）
-    render_ai_problem()
+    # 主体：历史任务列表 或 智能命题表单
+    if st.session_state.get("show_ai_history"):
+        render_ai_task_list()
+    else:
+        render_ai_problem()
 
 
 @st.dialog("模型配置", width="large")
@@ -1528,6 +1537,85 @@ def _ai_config_dialog():
                 st.success("模型配置已更新")
             else:
                 st.error(f"配置失败: {msg}")
+
+
+def render_ai_task_list():
+    """AI 命题历史任务列表（像评测列表那样分页展示）。"""
+    head_l, head_r = st.columns([3, 1], vertical_alignment="center")
+    with head_l:
+        st.subheader("历史任务")
+    with head_r:
+        if st.button("✏️ 返回命题", key="ai_history_back", use_container_width=True):
+            st.session_state.pop("show_ai_history", None)
+            st.rerun()
+
+    code, data, msg = api_call("GET", "/api/ai/problem-tasks/")
+    if code != 200:
+        st.error(msg)
+        return
+    tasks = data.get("tasks", []) if data else []
+    if not tasks:
+        st.info("暂无历史任务")
+        return
+
+    status_zh = {
+        "pending": "等待中",
+        "running": "执行中",
+        "completed": "完成",
+        "cancelled": "已中断",
+        "failed": "失败",
+    }
+    status_cls = {
+        "pending": "oj-tag-wait",
+        "running": "oj-tag-wait",
+        "completed": "oj-tag-ok",
+        "cancelled": "oj-tag-err",
+        "failed": "oj-tag-err",
+    }
+    st.markdown("💡 点击**任务编号**即可查看该任务的详情")
+
+    # 表头
+    st.markdown(
+        '<div class="oj-sub-head"><span style="flex:1.3">任务编号</span>'
+        '<span style="flex:1.0">状态</span><span style="flex:2.2">命题需求</span>'
+        '<span style="flex:0.9">费用</span><span style="flex:1.6">创建时间</span></div>',
+        unsafe_allow_html=True,
+    )
+
+    def _render_ai_row(t):
+        tid = t.get("task_id", "")
+        stt = t.get("status", "")
+        cls = status_cls.get(stt, "oj-tag-wait")
+        usage = t.get("usage", {}) or {}
+        currency = usage.get("currency", "USD")
+        symbol = {"USD": "$", "CNY": "¥"}.get(currency, currency)
+        cost = usage.get("cost", 0.0)
+        requirement = (t.get("requirement", "") or "").replace("\n", " ").strip()
+        if len(requirement) > 40:
+            requirement = requirement[:40] + "…"
+
+        with st.container(border=True):
+            row = st.columns([1.3, 1.0, 2.2, 0.9, 1.6], gap="small",
+                             vertical_alignment="center")
+            with row[0]:
+                if st.button(tid, key=f"ai_row_{tid}", use_container_width=True):
+                    st.session_state["ai_task_id"] = tid
+                    st.session_state.pop("show_ai_history", None)
+                    st.rerun()
+            row[1].markdown(
+                f"<span class=\"oj-tag {cls}\">{status_zh.get(stt, stt)}</span>",
+                unsafe_allow_html=True, text_alignment="center",
+            )
+            row[2].markdown(f"{requirement or '-'}", text_alignment="left")
+            row[3].markdown(
+                f"<span class=\"oj-cell-mono\">{symbol}{cost:.6f}</span>",
+                unsafe_allow_html=True, text_alignment="center",
+            )
+            row[4].markdown(
+                f"{t.get('created_time', '-')}", text_alignment="center",
+            )
+
+    _paginated_list("ai_tasks", tasks, _render_ai_row)
 
 
 def render_ai_problem():
@@ -1603,20 +1691,20 @@ def render_ai_task_status(task_id: str):
         col3.metric("总 Token", usage.get("total_tokens", 0))
         col4.metric("费用", f"{symbol}{usage.get('cost', 0.0):.6f}")
 
-    # 运行中：刷新 + 中断按钮
+    # 运行中：自动轮询刷新进度，同时提供「中断任务」按钮
     if status in ("pending", "running"):
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("刷新状态", use_container_width=True):
-                st.rerun()
-        with col2:
-            if st.button("中断任务", type="primary", use_container_width=True):
-                code, _, msg = api_call("PUT", f"/api/ai/problem-tasks/{task_id}/cancel")
-                if code == 200:
-                    st.warning("任务已中断")
-                    st.rerun()
-                else:
-                    st.error(msg)
+        st.info(f"⏳ 任务进行中，正在自动刷新进度...")
+        with st.spinner(f"当前进度：{progress}"):
+            time.sleep(1.5)
+        # 中断任务按钮（保留手动终止能力）
+        if st.button("🛑 中断任务", key=f"ai_cancel_{task_id}", use_container_width=True):
+            code, _, msg = api_call("PUT", f"/api/ai/problem-tasks/{task_id}/cancel")
+            if code == 200:
+                st.warning("任务已中断")
+            else:
+                st.error(msg)
+        # 自动轮询：无论是否点击中断，都刷新以获取最新状态
+        st.rerun()
 
     # 完成：展示结果 + 导入题目
     if status == "completed" and result:

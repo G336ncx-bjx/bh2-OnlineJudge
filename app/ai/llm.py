@@ -38,7 +38,7 @@ def save_model_config(cfg: dict) -> None:
 async def call_llm(
     messages: list[dict],
     temperature: float = 0.7,
-    max_tokens: int = 8192,
+    max_tokens: int = 16384,
     timeout: float = 120.0,
 ) -> tuple[str, dict]:
     """调用模型，返回 (content, usage)。
@@ -137,18 +137,19 @@ def parse_problem_json(text: str) -> Optional[dict]:
 
 
 def _repair_truncated_json(text: str, start: int) -> Optional[dict]:
-    """尝试修复被截断的 JSON：在最后一个「完整的顶层字段」边界处截断后补 } 再解析。
+    """尝试修复被截断的 JSON，返回解析出的 dict 或 None。
 
-    关键洞察：截断点几乎总在某个字段值中间（字符串、数组、对象被切断），
-    而它前面的最后一个顶层逗号，正好是「最后一个完整字段」的结尾。
-    因此扫描到所有「字符串外、深度为 0」的逗号位置，从后往前逐个尝试截断补 }。
+    分阶段尝试多种修复策略，从「最保守（丢弃最少的字段）」到「更激进」：
+    1. 顶层逗号截断：在最后一个「字符串外、深度为 1」的逗号处截断补 '}'；
+    2. 直接补闭合：把末尾未闭合的 '['/'{' 逐个补上 ']'/'}' 再解析；
+    3. 顶层字段逐个回退：逐步丢弃最后一个字段再补 '}'。
     """
     if start == -1:
         return None
     tail = text[start:]
-    # 收集所有「最外层对象顶层」逗号位置（字符串外、花括号深度为 1）
-    # 注意：tail 以最外层 '{' 开头且结尾的 '}' 因截断而缺失，所以最外层
-    # 对象的深度恒为 1（不会回到 0），其顶层字段逗号在 depth == 1 这一层。
+
+    # 策略 1：顶层逗号截断（最保守，保留最多完整字段）
+    # tail 以最外层 '{' 开头，其顶层字段逗号在 depth == 1 这一层
     commas = []
     in_string = False
     escape = False
@@ -170,8 +171,53 @@ def _repair_truncated_json(text: str, start: int) -> Optional[dict]:
             depth -= 1
         elif ch == "," and depth == 1:
             commas.append(i)
-    # 从后往前尝试：在每个顶层逗号处截断补 }，看能否解析出 dict
     for cut in reversed(commas):
+        fixed = tail[:cut] + "}"
+        try:
+            obj = json.loads(fixed)
+            if isinstance(obj, dict):
+                return obj
+        except json.JSONDecodeError:
+            continue
+
+    # 策略 2：直接补闭合缺失的括号
+    # 扫描出字符串外仍未闭合的 '[' 和 '{'，按逆序补 ']'/'}'
+    stack = []
+    in_string = False
+    escape = False
+    for ch in tail:
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch in "[{":
+            stack.append(ch)
+        elif ch in "]}":
+            if stack:
+                stack.pop()
+    closes = []
+    for opener in reversed(stack):
+        closes.append("]" if opener == "[" else "}")
+    fixed = tail + "".join(closes)
+    try:
+        obj = json.loads(fixed)
+        if isinstance(obj, dict):
+            return obj
+    except json.JSONDecodeError:
+        pass
+
+    # 策略 3：逐步丢弃末尾未完成的字段（逐字符向前回退，补 '}' 试解析）
+    # 从末尾向前，逐个尝试在「字符串外、深度为 1」的 ':' 或 ',' 处截断
+    for cut in range(len(tail) - 1, 0, -1):
+        ch = tail[cut]
+        if ch not in (":", ","):
+            continue
         fixed = tail[:cut] + "}"
         try:
             obj = json.loads(fixed)
