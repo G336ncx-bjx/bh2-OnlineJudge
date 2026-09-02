@@ -302,6 +302,88 @@ def inject_css():
         .oj-sub-row {
             text-align: center;
         }
+        /* 提交详情：头部标题 */
+        .oj-detail-head {
+            font-size: 20px;
+            font-weight: 800;
+            color: #1a2a6c;
+            margin: 4px 0 14px 0;
+        }
+        .oj-detail-title {
+            display: inline-block;
+            margin-left: 10px;
+            padding: 3px 12px;
+            font-size: 14px;
+            font-weight: 700;
+            color: #1a2a6c;
+            background: #eef1ff;
+            border-radius: 20px;
+            vertical-align: middle;
+        }
+        /* 提交详情：元信息卡片 */
+        .oj-meta-card {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1px;
+            background: #e6ebef;
+            border: 1px solid #e6ebef;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(26, 42, 108, .05);
+        }
+        .oj-meta-item {
+            flex: 1 1 0;
+            min-width: 140px;
+            background: #ffffff;
+            padding: 12px 18px;
+            text-align: center;
+        }
+        .oj-meta-k {
+            font-size: 12px;
+            color: #8a9aa5;
+            margin-bottom: 5px;
+            letter-spacing: .5px;
+        }
+        .oj-meta-v {
+            font-size: 16px;
+            font-weight: 700;
+            color: #2b3445;
+            word-break: break-all;
+        }
+        /* 提交详情：统计卡片 */
+        .oj-stat-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin: 14px 0 4px 0;
+        }
+        .oj-stat-card {
+            flex: 1 1 0;
+            min-width: 140px;
+            padding: 14px 18px;
+            background: #ffffff;
+            border: 1px solid #e6ebef;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(26, 42, 108, .05);
+        }
+        .oj-stat-k {
+            font-size: 12px;
+            color: #8a9aa5;
+            margin-bottom: 6px;
+            letter-spacing: .5px;
+        }
+        .oj-stat-v {
+            font-size: 22px;
+            font-weight: 800;
+            color: #1a2a6c;
+        }
+        .oj-stat-score {
+            color: #1e8e3e;
+        }
+        .oj-stat-ok .oj-stat-v { color: #1e8e3e; }
+        .oj-stat-err .oj-stat-v { color: #c0392b; }
+        .oj-stat-wait .oj-stat-v { color: #b26a00; }
         /* 测试点明细：自绘表格 */
         .oj-case-table {
             margin: 8px 0 16px 0;
@@ -939,18 +1021,24 @@ def render_submission_detail():
 
     # 友好标题：优先题目名，其次题目 id，避免直接暴露裸 submission_id 哈希
     title = data.get("problem_title") or data.get("problem_id") or sid
-    st.subheader(f"提交详情 · {title}")
+    st.markdown(
+        f"<div class=\"oj-detail-head\">提交详情<span class=\"oj-detail-title\">{title}</span></div>",
+        unsafe_allow_html=True,
+    )
 
-    # 元信息行
-    meta_cols = st.columns(4)
-    with meta_cols[0]:
-        st.markdown(f"**提交编号**\n\n{sid}")
-    with meta_cols[1]:
-        st.markdown(f"**提交者**\n\n{data.get('username', '-')}")
-    with meta_cols[2]:
-        st.markdown(f"**语言**\n\n{data.get('language', '-')}")
-    with meta_cols[3]:
-        st.markdown(f"**提交时间**\n\n{data.get('submit_time', '-')}")
+    # 元信息卡片：提交编号 / 提交者 / 语言 / 提交时间
+    meta_items = [
+        ("提交编号", sid),
+        ("提交者", data.get("username", "-")),
+        ("语言", data.get("language", "-")),
+        ("提交时间", data.get("submit_time", "-")),
+    ]
+    meta_html = "".join(
+        f"<div class=\"oj-meta-item\"><div class=\"oj-meta-k\">{k}</div>"
+        f"<div class=\"oj-meta-v\">{v}</div></div>"
+        for k, v in meta_items
+    )
+    st.markdown(f"<div class=\"oj-meta-card\">{meta_html}</div>", unsafe_allow_html=True)
 
     status = data.get("status")
     status_zh = {"pending": "评测中", "success": "评测完成", "error": "评测出错"}
@@ -966,14 +1054,17 @@ def render_submission_detail():
         counts = data.get("counts")
         score_str = f"{score} / {counts * 10}" if score is not None else "-"
 
-        # 状态与得分用 metric 展示
-        m1, m2, m3 = st.columns(3)
-        with m1:
-            st.metric("状态", status_zh.get(status, status))
-        with m2:
-            st.metric("得分", score_str)
-        with m3:
-            st.metric("测试点数量", counts if counts is not None else "-")
+        # 状态 / 得分 / 测试点数量：统计卡片
+        stat_cls = {"success": "oj-stat-ok", "error": "oj-stat-err"}.get(status, "oj-stat-wait")
+        stats_html = (
+            f"<div class=\"oj-stat-card {stat_cls}\"><div class=\"oj-stat-k\">状态</div>"
+            f"<div class=\"oj-stat-v\">{status_zh.get(status, status)}</div></div>"
+            f"<div class=\"oj-stat-card\"><div class=\"oj-stat-k\">得分</div>"
+            f"<div class=\"oj-stat-v oj-stat-score\">{score_str}</div></div>"
+            f"<div class=\"oj-stat-card\"><div class=\"oj-stat-k\">测试点数量</div>"
+            f"<div class=\"oj-stat-v\">{counts if counts is not None else '-'}</div></div>"
+        )
+        st.markdown(f"<div class=\"oj-stat-row\">{stats_html}</div>", unsafe_allow_html=True)
 
         if data.get("compile_info"):
             ci = data["compile_info"]
