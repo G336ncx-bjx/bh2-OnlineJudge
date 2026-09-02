@@ -65,11 +65,11 @@ def gen_architecture():
     # 三层结构
     # 前端层
     _draw_box(d, (60, 110, W - 60, 210), "", "#4e79a7", font_size=22)
-    d.text((100, 130), "Streamlit 前端（frontend/app.py，605 行）", fill="white", font=_font(20, bold=True))
+    d.text((100, 130), "Streamlit 前端（frontend/app.py，1794 行）", fill="white", font=_font(20, bold=True))
     d.text((100, 170), "· 用户页面：注册 / 登录 / 个人中心", fill="white", font=_font(15))
-    d.text((460, 170), "· 题目页面：列表 / 详情 / 上传", fill="white", font=_font(15))
+    d.text((460, 170), "· 题目页面：列表 / 详情 / 新增 / 编辑", fill="white", font=_font(15))
     d.text((820, 170), "· 评测提交：选择题目与语言，查看评测结果", fill="white", font=_font(15))
-    d.text((100, 192), "· AI 命题页面：模型配置 / 需求输入 / 进度展示", fill="white", font=_font(15))
+    d.text((100, 192), "· AI 命题页面：模型配置 / 需求输入 / 进度展示 / 历史任务", fill="white", font=_font(15))
 
     # 箭头：前端 -> 后端
     _arrow(d, (W / 2, 215), (W / 2, 250), "#4e79a7", 3)
@@ -77,7 +77,7 @@ def gen_architecture():
 
     # 后端层
     _draw_box(d, (60, 265, W - 60, 470), "", "#59a14f", font_size=22)
-    d.text((100, 285), "FastAPI 后端（全 async def 异步接口，27 个接口）", fill="white", font=_font(20, bold=True))
+    d.text((100, 285), "FastAPI 后端（全 async def 异步接口，2345 行，30+ 接口）", fill="white", font=_font(20, bold=True))
 
     # 路由层
     d.text((100, 330), "路由层 app/routers/", fill="white", font=_font(18, bold=True))
@@ -154,7 +154,51 @@ def gen_judge_flow():
     print("judge_flow.png saved")
 
 
+def gen_ai_flow():
+    W, H = 1200, 720
+    img = Image.new("RGB", (W, H), "white")
+    d = ImageDraw.Draw(img)
+
+    f_title = _font(30, bold=True)
+    title = "AI 智能命题：分阶段生成与中断机制"
+    d.text((W / 2 - d.textlength(title, font=f_title) / 2, 24),
+           title, fill="#1a1a2e", font=f_title)
+
+    # 阶段流程（横向两列）
+    steps = [
+        ("① 提交命题需求", "构建 prompt（知识点/难度/参考题目）", "#4e79a7"),
+        ("② 生成题目主体", "LLM 返回题目 JSON（不含测试点，控制输出长度）", "#59a14f"),
+        ("③ 解析题目 JSON", "兼容代码块包裹 + 截断兜底修复", "#f28e2b"),
+        ("④ 生成测试点", "二次调用 LLM，单独生成 testcases（≥5 个）", "#e15759"),
+        ("⑤ 校验补全", "必填字段校验 + 默认值补全 + public_cases", "#af7aa1"),
+        ("⑥ 表单导入题库", "复用题目表单展示，可直接/修改后导入", "#76b7b2"),
+    ]
+    x = 70
+    y = 100
+    w = 1060
+    h = 64
+    gap = 14
+    for i, (name, desc, color) in enumerate(steps):
+        _draw_box(d, (x, y, x + w, y + h), name, color, font_size=18)
+        d.text((x + w + 15, y + h / 2 - 8), desc, fill="#333333", font=_font(15))
+        if i < len(steps) - 1:
+            _arrow(d, (x + w / 2, y + h + 2), (x + w / 2, y + h + gap - 4), "#666", 3)
+        y += h + gap
+
+    # 中断机制说明框
+    _draw_box(d, (70, y + 10, W - 70, y + 96), "", "#f0f5fa", font_size=16)
+    d.text((95, y + 24), "中断机制：真正终止大模型输出", fill="#2a4d75", font=_font(18, bold=True))
+    d.text((95, y + 56), "· 全局协程注册表 _RUNNING_TASKS：task_id → asyncio.Task，start_task 登记、结束自动移除",
+           fill="#1a1a2e", font=_font(15))
+    d.text((95, y + 78), "· cancel 接口调用 task.cancel() 触发 CancelledError，立即打断进行中的 httpx LLM HTTP 请求",
+           fill="#1a1a2e", font=_font(15))
+
+    img.save(os.path.join(HERE, "ai_flow.png"), "PNG")
+    print("ai_flow.png saved")
+
+
 if __name__ == "__main__":
     gen_architecture()
     gen_judge_flow()
+    gen_ai_flow()
     print("全部配图生成完成")

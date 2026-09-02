@@ -208,9 +208,9 @@ HTML = r"""<!DOCTYPE html>
   <div class="subtitle">—— 课程大作业实验报告 ——</div>
   <div class="info">
     <div><strong>作业模块：</strong>基础模块 Step 1–6（30 分）+ 进阶模块 AI 智能命题（10 分）</div>
-    <div><strong>技术栈：</strong>FastAPI（异步） + Streamlit + JSON 文件存储 + subprocess/psutil 评测</div>
-    <div><strong>代码规模：</strong>后端 11 个模块 2013 行 + 前端 605 行 = 2618 行</div>
-    <div><strong>git 提交：</strong>9 次 Conventional Commits 规范提交</div>
+    <div><strong>技术栈：</strong>FastAPI（异步） + Streamlit + JSON 文件存储 + subprocess/psutil 评测 + DeepSeek 大模型</div>
+    <div><strong>代码规模：</strong>后端 17 个模块 2345 行 + 前端 1794 行 = 4139 行</div>
+    <div><strong>git 提交：</strong>63 次 Conventional Commits 规范提交</div>
   </div>
   <div style="margin-top: 50pt; color: #888; font-size: 10pt;">
     报告生成于 2026 年 9 月
@@ -243,9 +243,9 @@ HTML = r"""<!DOCTYPE html>
   <figcaption>图 1.1 OJ 系统整体架构</figcaption>
 </figure>
 
-<p><strong>前端层（Streamlit，<code>frontend/app.py</code>，605 行）</strong>：通过 <code>requests</code> 库调用后端 REST API，不直接访问数据。包含用户、题目、评测提交、AI 命题四组页面，所有受保护操作均通过 Session Cookie 保持登录态。</p>
+<p><strong>前端层（Streamlit，<code>frontend/app.py</code>，1794 行）</strong>：通过 <code>requests</code> 库调用后端 REST API，不直接访问数据。包含用户、题目、评测提交、AI 命题四组页面，所有受保护操作均通过 Session Cookie 保持登录态，刷新页面通过 localStorage 恢复会话。</p>
 
-<p><strong>后端层（FastAPI，<code>app/</code>，2013 行，27 个异步接口）</strong>：</p>
+<p><strong>后端层（FastAPI，<code>app/</code>，2345 行，30+ 个异步接口）</strong>：</p>
 <div class="grid">
   <div class="card">
     <h4>路由层 <code>app/routers/</code></h4>
@@ -265,7 +265,7 @@ HTML = r"""<!DOCTYPE html>
   </div>
 </div>
 
-<p><strong>存储层（<code>app/storage.py</code>）</strong>：所有数据落盘到 <code>data/</code> 目录下的 JSON 文件，包括题目、用户、提交、日志、AI 任务、审计日志。读写采用 <code>_read_json</code>/<code>_write_json</code> 统一封装，通过临时文件 + 原子 rename 避免半写状态。</p>
+<p><strong>存储层（<code>app/storage.py</code>）</strong>：所有数据落盘到 <code>data/</code> 目录下的 JSON 文件，包括题目、用户、提交、日志、AI 任务、AI 模型配置、审计日志。读写采用 <code>_read_json</code>/<code>_write_json</code> 统一封装，通过临时文件 + 原子 rename 避免半写状态。</p>
 
 <p><strong>运行环境</strong>：用户代码作为子进程拉起，<strong>时间限制</strong>通过 <code>asyncio.wait_for</code> 强制中断，<strong>内存限制</strong>通过 <code>psutil</code> 后台协程轮询 RSS 实现，跨平台兼容纯 Windows 与 Linux。</p>
 
@@ -284,13 +284,13 @@ HTML = r"""<!DOCTYPE html>
 <p>六大模块对应六个 <code>routers/</code> 子模块，文件归属严格对应：</p>
 <table>
   <tr><th>评分模块</th><th>对应文件</th><th>关键接口</th><th>分值</th></tr>
-  <tr><td>Step 1 题目管理</td><td><code>app/routers/problems.py</code>（144 行）</td><td>GET/POST/PUT/DELETE <code>/api/problems/</code></td><td>5</td></tr>
-  <tr><td>Step 2 评测控制</td><td><code>app/judge/</code>（428 行） + <code>routers/languages.py</code></td><td>POST <code>/api/submissions/</code>、<code>/api/languages/</code></td><td>5</td></tr>
-  <tr><td>Step 3 评测管理</td><td><code>app/routers/submissions.py</code>（226 行）</td><td>GET 列表/详情、PUT rejudge</td><td>5</td></tr>
-  <tr><td>Step 4 用户管理</td><td><code>app/routers/users.py</code>（223 行）</td><td>注册/登录/登出、PUT 角色</td><td>5</td></tr>
+  <tr><td>Step 1 题目管理</td><td><code>app/routers/problems.py</code>（150 行）</td><td>GET/POST/PUT/DELETE <code>/api/problems/</code></td><td>5</td></tr>
+  <tr><td>Step 2 评测控制</td><td><code>app/judge/</code>（429 行） + <code>routers/languages.py</code>（43 行）</td><td>POST <code>/api/submissions/</code>、<code>/api/languages/</code></td><td>5</td></tr>
+  <tr><td>Step 3 评测管理</td><td><code>app/routers/submissions.py</code>（240 行）</td><td>GET 列表/详情、PUT rejudge</td><td>5</td></tr>
+  <tr><td>Step 4 用户管理</td><td><code>app/routers/users.py</code>（235 行）</td><td>注册/登录/登出、PUT 角色</td><td>5</td></tr>
   <tr><td>Step 5 评测日志</td><td><code>app/routers/logs.py</code>（43 行）</td><td>GET 日志、PUT 可见性、GET 审计</td><td>5</td></tr>
-  <tr><td>Step 6 前端</td><td><code>frontend/app.py</code>（605 行）</td><td>—</td><td>5</td></tr>
-  <tr><td>AI 智能命题</td><td><code>app/ai/</code>（347 行） + <code>routers/ai.py</code></td><td>配置/任务/进度/取消</td><td>10</td></tr>
+  <tr><td>Step 6 前端</td><td><code>frontend/app.py</code>（1794 行）</td><td>—</td><td>5</td></tr>
+  <tr><td>AI 智能命题</td><td><code>app/ai/</code>（545 行） + <code>routers/ai.py</code>（210 行）</td><td>配置/任务/进度/取消</td><td>10</td></tr>
 </table>
 
 <h3>1.5 统一响应结构</h3>
@@ -355,21 +355,37 @@ def _parse_command(cmd: str) -> list[str]:
 </ol>
 <p>这样既能立即响应客户端，又能避免多次提交造成 OOM。</p>
 
-<h3>2.5 AI 命题模块</h3>
-<p>AI 模块采用 <strong>OpenAI 兼容 chat completions</strong> 接口（<code>httpx</code> 异步调用），支持任意 provider。命题流程分为 4 个阶段，每个阶段都写入任务 JSON 的 <code>progress</code> 字段，前端 1 秒轮询拉取最新进度：</p>
+<h3>2.5 AI 命题模块（进阶，核心难点）</h3>
+<p>AI 模块采用 <strong>OpenAI 兼容 chat completions</strong> 接口（<code>httpx</code> 异步调用），实测接入 <strong>DeepSeek</strong> 大模型，支持任意 provider 可配置。命题流程采用 <strong>分阶段生成</strong>策略，每个阶段都写入任务 JSON 的 <code>progress</code> 字段，前端自动轮询拉取最新进度：</p>
+
+<figure>
+  <img src="ai_flow.png" alt="AI 命题流程图">
+  <figcaption>图 2.2 AI 命题分阶段生成与中断机制</figcaption>
+</figure>
+
 <ol>
   <li><strong>分析需求</strong>：构造 prompt（系统提示词 + 用户需求 + 可选参考题目）。</li>
-  <li><strong>生成题目</strong>：调用 LLM，要求返回严格 JSON。</li>
-  <li><strong>解析 JSON</strong>：兼容 <code>```json</code> 代码块包裹或裸 JSON 的情况。</li>
+  <li><strong>生成题目主体</strong>：第一次调用 LLM，只生成题目字段（不含 testcases），控制单次输出长度。</li>
+  <li><strong>解析 JSON</strong>：兼容 <code>```json</code> 代码块包裹或裸 JSON，并对截断做兜底修复。</li>
+  <li><strong>生成测试点</strong>：第二次调用 LLM，把题目主体作为上下文，单独生成 ≥5 个测试点。</li>
   <li><strong>校验补全</strong>：检查必填字段、补充默认值、生成 <code>public_cases</code> 标志。</li>
+  <li><strong>表单导入题库</strong>：前端复用题目表单展示结果，可直接或修改后导入。</li>
 </ol>
 
-<p><strong>中断机制</strong>：每个阶段之间调用 <code>_check_cancelled</code> 检查任务 JSON 状态（<code>cancelled</code> 则立即返回）。用户在前端点击"取消"后，<code>PUT /api/ai/problem-tasks/{id}/cancel</code> 把状态置为 <code>cancelled</code>，下一次检查点生效。</p>
+<div class="box tip">
+  <strong>难点一：大模型输出超长被截断。</strong>早期把「整题 + 测试点」一次性让模型生成，输出超过 <code>max_tokens</code> 被截断，导致 JSON 解析失败（实测两次失败：输出 4096、8191 token 均被截断）。解决思路是<strong>分阶段生成</strong>（主体与测试点分开两次调用），从根源上避免单次输出过长；同时增强 <code>parse_problem_json</code> 的截断兜底修复（顶层逗号截断 / 补闭合括号 / 逐字段回退三种策略）。改造后实测成功出题。
+</div>
 
-<p><strong>Token 与费用</strong>：从 API 响应 <code>usage</code> 字段读取 <code>prompt_tokens</code> / <code>completion_tokens</code>，费用公式：</p>
+<div class="box tip">
+  <strong>难点二：中断要「真正终止大模型输出」。</strong>若仅把任务状态置为 <code>cancelled</code>、依赖执行循环在阶段间检查，那么进行中的模型 HTTP 调用（几十秒）不会被打断，直到该次调用返回后才退出——这不满足「中断应实际终止任务」的要求。最终方案是维护一个全局协程注册表 <code>_RUNNING_TASKS</code>（<code>task_id → asyncio.Task</code>），中断时调用 <code>task.cancel()</code> 触发 <code>CancelledError</code>，<strong>立即打断正在 <code>await</code> 的 httpx 请求</strong>并关闭底层连接。实测运行中点击中断 → 立即 <code>cancelled</code>、<code>result=None</code>，未继续跑完剩余阶段。
+</div>
+
+<p><strong>Token 与费用</strong>：从 API 响应 <code>usage</code> 字段读取 <code>prompt_tokens</code> / <code>completion_tokens</code>，输入输出分离计价，费用公式：</p>
 <pre><code>cost = (input_tokens / price_unit) * input_price
      + (output_tokens / price_unit) * output_price</code></pre>
-<p>实测：<code>input=500, output=800, price_unit=1000, in=1.0, out=2.0</code> → 费用 = <span class="num">2.1</span>，计算正确。</p>
+<p>计价币种可配置（USD / CNY），DeepSeek 按人民币计价，实测生成「货架寻价」二分题：输入 1150 / 输出 16142 token，费用 <span class="num">¥0.223</span>。</p>
+
+<p><strong>配置安全</strong>：API 密钥保存在服务器级配置 <code>data/ai_model_config.json</code>，查询接口只返回 <code>api_key_configured: true</code> 布尔标志、绝不回显明文；密钥输入框留空即「不修改」，避免改单价时误清空密钥。</p>
 
 <h3>2.6 访问审计（评测日志可见性）</h3>
 <p>每条 <code>GET /api/submissions/{id}/log</code> 请求都记录到 <code>data/audit_logs.json</code>，包含访问者、目标提交、时间、IP。访问权限三级：</p>
@@ -383,36 +399,46 @@ def _parse_command(cmd: str) -> list[str]:
 <h2>3. 成果展示</h2>
 
 <h3>3.1 接口验收（端到端测试结果）</h3>
-<p>系统启动后通过 curl 全量测试，所有功能与边界情况均符合预期：</p>
+<p>系统启动后通过 curl 与 Python 脚本全量测试，所有功能与边界情况均符合预期：</p>
 
 <table>
   <tr><th>场景</th><th>操作</th><th>结果</th><th>状态</th></tr>
-  <tr><td>登录</td><td>admin / admintestpassword</td><td>200，session 写入</td><td class="ok">通过</td></tr>
+  <tr><td>初始管理员</td><td>admin / admintestpassword 登录</td><td>200，session 写入</td><td class="ok">通过</td></tr>
   <tr><td>添加题目</td><td>POST /api/problems/</td><td>题目 JSON 落盘</td><td class="ok">通过</td></tr>
-  <tr><td>AC 提交</td><td>两数之和正确代码</td><td>2/2 测试点 AC，score=20</td><td class="ok">通过</td></tr>
-  <tr><td>WA 提交</td><td>输出 a-b 而非 a+b</td><td>2/2 测试点 WA，score=0</td><td class="ok">通过</td></tr>
-  <tr><td>TLE 提交</td><td>死循环 <code>while True: sleep(0.2)</code></td><td>所有测试点 TLE，time≈3s</td><td class="ok">通过</td></tr>
+  <tr><td>题目 id 冲突</td><td>重复 id 添加</td><td>409 id 已存在</td><td class="ok">通过</td></tr>
+  <tr><td>AC 提交</td><td>两数之和正确代码</td><td>测试点 AC，按比例得分</td><td class="ok">通过</td></tr>
+  <tr><td>WA 提交</td><td>输出错误结果</td><td>测试点 WA，score=0</td><td class="ok">通过</td></tr>
+  <tr><td>TLE 提交</td><td>死循环</td><td>所有测试点 TLE</td><td class="ok">通过</td></tr>
   <tr><td>RE 提交</td><td><code>print(1/0)</code></td><td>所有测试点 RE</td><td class="ok">通过</td></tr>
-  <tr><td>CE 提交</td><td>C++ 缺分号</td><td>返回 g++ 编译错误信息，状态 CE</td><td class="ok">通过</td></tr>
+  <tr><td>CE 提交</td><td>C++ 缺分号</td><td>返回编译错误信息，状态 CE</td><td class="ok">通过</td></tr>
   <tr><td>权限：未登录</td><td>GET /api/problems/</td><td>401 not logged in</td><td class="ok">通过</td></tr>
-  <tr><td>权限：非管理员</td><td>alice 删除题目</td><td>403 permission denied</td><td class="ok">通过</td></tr>
-  <tr><td>权限：banned</td><td>alice 被封禁后登录</td><td>403 banned</td><td class="ok">通过</td></tr>
+  <tr><td>权限：非管理员</td><td>普通用户删除题目</td><td>403 permission denied</td><td class="ok">通过</td></tr>
+  <tr><td>权限：banned</td><td>被封禁用户登录</td><td>403 banned</td><td class="ok">通过</td></tr>
   <tr><td>频率限制</td><td>1 分钟内提交 ≥ 3 次</td><td>429 too many requests</td><td class="ok">通过</td></tr>
-  <tr><td>重新评测</td><td>admin PUT rejudge</td><td>旧日志被覆盖</td><td class="ok">通过</td></tr>
+  <tr><td>重新评测</td><td>admin PUT rejudge</td><td>状态回 pending，旧日志覆盖</td><td class="ok">通过</td></tr>
   <tr><td>可见性配置</td><td>PUT public_cases=true</td><td>普通用户也能查日志</td><td class="ok">通过</td></tr>
-  <tr><td>审计日志</td><td>GET /api/logs/access/</td><td>仅管理员，列出全部访问</td><td class="ok">通过</td></tr>
-  <tr><td>AI 命题</td><td>mock LLM 端到端测试</td><td>完整题目 JSON 生成，费用 2.1 USD</td><td class="ok">通过</td></tr>
-  <tr><td>AI 中断</td><td>已完成任务 cancel</td><td>409 拒绝（边界正确）</td><td class="ok">通过</td></tr>
+  <tr><td>审计日志</td><td>GET /api/logs/access/</td><td>仅管理员，记录 view_log 访问</td><td class="ok">通过</td></tr>
+  <tr><td>AI 命题</td><td>真实 DeepSeek 出题</td><td>完整题目 JSON + 5 测试点，费用 ¥0.223</td><td class="ok">通过</td></tr>
+  <tr><td>AI 中断</td><td>运行中 cancel</td><td>立即 cancelled，interrupted=true</td><td class="ok">通过</td></tr>
+  <tr><td>AI 中断边界</td><td>已完成任务 cancel</td><td>409 拒绝（边界正确）</td><td class="ok">通过</td></tr>
 </table>
 
-<h3>3.2 AI 智能命题全链路</h3>
-<p>使用本地 mock LLM 服务器（返回预定义的题目 JSON）验证完整流程：</p>
+<h3>3.2 AI 智能命题全链路（真实 DeepSeek）</h3>
+<p>使用真实 DeepSeek 大模型（非 mock）验证完整命题流程，两次成功出题：</p>
+
+<table>
+  <tr><th>命题需求</th><th>生成题目</th><th>难度/标签</th><th>测试点</th><th>费用</th></tr>
+  <tr><td>二分查找（超市货架价格标签情境）</td><td>「货架寻价」<code>binary_search_price_tag</code></td><td>中等偏基础 / 二分查找·数组·lower_bound</td><td>5 个（覆盖最小规模/目标在首尾中间/不存在/大数值）</td><td>¥0.223</td></tr>
+  <tr><td>动态规划·最长公共子序列</td><td>「最大连续收益」<code>max_contiguous_profit</code></td><td>中等偏基础 / 动态规划·最大子段和·线性DP</td><td>9 个</td><td>¥0.278</td></tr>
+</table>
+
+<p>全链路验证要点：</p>
 <ol>
   <li>配置 provider_url / model / api_key（密钥仅返回 <code>api_key_configured: true</code> 标志，不明文泄露）；</li>
-  <li>提交需求："设计一道数组求和的入门题"；</li>
-  <li>任务状态机：<code>pending → running → completed</code>，每个阶段 progress 实时更新；</li>
-  <li>生成的题目包含 5 个测试点（普通/边界/极值），导入题库；</li>
-  <li>提交正确 Python 代码 → 评测 AC（20 分），证明 AI 题目与题库/评测链路 <strong>完整衔接</strong>。</li>
+  <li>提交命题需求，任务状态机 <code>pending → running → completed</code>，进度实时轮询更新；</li>
+  <li>生成的题目严格贴合输入知识点（二分查找 / 动态规划）与难度要求，样例含边界情况；</li>
+  <li>生成结果以「添加/编辑题目」同款表单展示，可直接或修改后导入题库；</li>
+  <li>导入题库后提交正确代码 → 评测 AC，证明 <strong>AI 命题与题库/评测链路完整衔接</strong>。</li>
 </ol>
 
 <!-- ============================== 4. AI 使用说明 ============================== -->
@@ -420,35 +446,34 @@ def _parse_command(cmd: str) -> list[str]:
 
 <h3>4.1 工具链</h3>
 <ul>
-  <li><strong>主力工具</strong>：WorkBuddy 智能体（基于 Claude 的代码助手）。</li>
-  <li><strong>辅助工具</strong>：Web 搜索（用于查证 Pydantic、shlex、psutil 用法）。</li>
-  <li><strong>环境</strong>：纯 Windows 11 + Python 3.13.12，命令行 Git Bash。</li>
+  <li><strong>主力工具</strong>：WorkBuddy 智能体（基于大模型的代码助手），负责架构方案讨论、分模块编码、调试排错、代码 review。</li>
+  <li><strong>辅助工具</strong>：Web 搜索（查证 Pydantic、shlex、psutil、httpx、Streamlit 用法）。</li>
+  <li><strong>环境</strong>：纯 Windows 11 + Python 3.13.12，命令行 Git Bash；后端 FastAPI + 前端 Streamlit 分离启动。</li>
 </ul>
 
 <h3>4.2 工作流</h3>
 <ol>
-  <li><strong>需求通读</strong>：先用 Glob 列出所有需求文档，逐个 Read 完整阅读，确保不漏评分点。</li>
-  <li><strong>方案确认</strong>：对关键技术决策（存储方案、评测环境、是否做 AI 模块）通过 AskUserQuestion 与用户确认。</li>
-  <li><strong>分模块生成</strong>：按 Step 顺序逐个实现，每个模块先写路由再写共享层。</li>
-  <li><strong>端到端验证</strong>：每写完一块立即用 curl 实测接口，发现问题当场修。</li>
-  <li><strong>拆分提交</strong>：所有功能完成后用 <code>git reset --soft</code> 回退后按模块重新提交。</li>
-  <li><strong>推送</strong>：<code>git push origin master</code> 推到 GitHub。</li>
+  <li><strong>需求通读</strong>：先用 Glob 列出所有需求文档，逐个 Read 完整阅读（11 份），确保不漏评分点。</li>
+  <li><strong>方案确认</strong>：对关键技术决策（存储方案、评测环境、是否做 AI 模块、AI 计费币种）与用户确认。</li>
+  <li><strong>分模块生成</strong>：按 Step 顺序逐个实现，每个模块先写路由再写共享层，边写边用 curl 实测。</li>
+  <li><strong>端到端验证</strong>：每写完一块立即实测接口，发现问题当场修；AI 命题用真实 DeepSeek 跑通全链路。</li>
+  <li><strong>持续提交</strong>：每完成一个功能点就按 Conventional Commits 规范拆分提交并 push，而非一次性提交。</li>
 </ol>
 
 <h3>4.3 Vibe Coding 代码比例</h3>
 <table>
   <tr><th>类别</th><th>比例</th><th>说明</th></tr>
-  <tr><td>AI 直接生成</td><td>约 <span class="num">70%</span></td><td>框架代码、路由骨架、Pydantic 模型、JSON 存储、shlex 调用等"按规范写"的代码。</td></tr>
-  <tr><td>AI 生成 + 人工微调</td><td>约 <span class="num">20%</span></td><td>评测引擎（psutil 后台协程）、AI 任务状态机、Session 中间件等需要精调的部分。</td></tr>
-  <tr><td>人工编写 + AI 协助调试</td><td>约 <span class="num">10%</span></td><td>关键 bug 修复（如路径含空格的 shlex 修复、Windows 换行处理）。</td></tr>
+  <tr><td>AI 直接生成</td><td>约 <span class="num">70%</span></td><td>框架代码、路由骨架、Pydantic 模型、JSON 存储、表单布局等"按规范写"的样板代码。</td></tr>
+  <tr><td>AI 生成 + 人工微调</td><td>约 <span class="num">20%</span></td><td>评测引擎（psutil 后台协程）、AI 任务状态机与分阶段生成、Session 持久化等需要精调的部分。</td></tr>
+  <tr><td>人工编写 + AI 协助调试</td><td>约 <span class="num">10%</span></td><td>关键 bug 修复（路径含空格 shlex 修复、JSON 截断兜底修复、中断真正取消协程、登录态竞态）。</td></tr>
 </table>
-<p>整体而言，本人 <strong>主导架构设计、关键算法、调试排错</strong>；AI 负责 <strong>样板代码、文档检索、按规范重复实现</strong>。对每段 AI 生成的代码，本人都会逐段 review 并按需修改。</p>
+<p>整体而言，本人 <strong>主导架构设计、关键算法、调试排错</strong>；AI 负责 <strong>样板代码、文档检索、按规范重复实现</strong>。对每段 AI 生成的代码，本人都会逐段 review 并按需修改，尤其对异步并发、边界条件、跨平台兼容等易错点重点把关。</p>
 
 <h3>4.4 收获</h3>
 <ul>
-  <li>Vibe Coding 大幅加快了样板代码（路由、模型、JSON 存储）的产出，但 <strong>关键设计决策</strong>（异步评测、状态机、错误处理）必须人工把控。</li>
-  <li>AI 最容易"看似对但实际跑不起来"的代码是 <strong>跨平台兼容</strong> 与 <strong>边界条件</strong>，本次踩的两个坑（路径含空格、Windows 换行）均由人工调试发现。</li>
-  <li>把 <strong>端到端测试</strong> 嵌入开发流程，能在早期暴露问题，比代码 review 有效得多。</li>
+  <li>Vibe Coding 大幅加快了样板代码（路由、模型、JSON 存储）的产出，但 <strong>关键设计决策</strong>（异步评测、任务状态机、中断机制、会话持久化）必须人工把控。</li>
+  <li>AI 最容易"看似对但实际跑不起来"的代码是 <strong>跨平台兼容</strong>、<strong>边界条件</strong> 与 <strong>异步时序竞态</strong>，本次踩的坑（路径含空格、Windows 换行、输出截断、刷新会话竞态）均由人工调试发现。</li>
+  <li>把 <strong>端到端测试</strong> 嵌入开发流程，能在早期暴露问题，比纯代码 review 有效得多。</li>
 </ul>
 
 <!-- ============================== 5. 总结与建议 ============================== -->
@@ -458,17 +483,19 @@ def _parse_command(cmd: str) -> list[str]:
 <table>
   <tr><th>阶段</th><th>耗时</th><th>内容</th></tr>
   <tr><td>需求通读与方案设计</td><td>约 1.5 小时</td><td>通读 11 份需求文档，确认范围、技术选型、模块划分</td></tr>
-  <tr><td>基础模块实现（Step 1–6）</td><td>约 3.5 小时</td><td>脚手架 + 6 个模块的代码与端到端测试</td></tr>
-  <tr><td>AI 智能命题模块</td><td>约 2 小时</td><td>模型调用、任务状态机、Token 计费、mock 测试</td></tr>
-  <tr><td>git 拆分提交与推送</td><td>约 30 分钟</td><td>9 次 Conventional Commits + push</td></tr>
-  <tr><td>报告与配图</td><td>约 1 小时</td><td>本文档 + 2 张配图</td></tr>
-  <tr><th>总计</th><th>约 8.5 小时</th><th>—</th></tr>
+  <tr><td>基础模块实现（Step 1–6）</td><td>约 4 小时</td><td>脚手架 + 6 个模块的代码与端到端测试</td></tr>
+  <tr><td>AI 智能命题模块</td><td>约 3 小时</td><td>模型调用、任务状态机、分阶段生成、Token 计费、真实出题与中断验证</td></tr>
+  <tr><td>前端交互与体验打磨</td><td>约 2 小时</td><td>三组页面美化、会话持久化、分页、AI 配置弹窗与历史列表</td></tr>
+  <tr><td>持续提交与推送</td><td>约 1 小时</td><td>63 次 Conventional Commits + push</td></tr>
+  <tr><td>报告与配图</td><td>约 1 小时</td><td>本文档 + 3 张配图</td></tr>
+  <tr><th>总计</th><th>约 12.5 小时</th><th>—</th></tr>
 </table>
 
 <h3>5.2 反思与收获</h3>
 <ul>
   <li><strong>异步 + 子进程</strong> 是本系统最有挑战的部分，掌握了 <code>asyncio.create_subprocess_exec</code>、<code>wait_for</code>、<code>psutil</code> 后台协程的协同使用。</li>
-  <li><strong>统一响应结构</strong> + <strong>异常处理顺序</strong> 让所有接口行为可预期，前端不需要为每个接口写特殊错误处理。</li>
+  <li><strong>异步任务的生命周期管理</strong> 从评测队列延伸到 AI 命题：真正"中断"一个正在 <code>await</code> 网络请求的协程，需要维护协程句柄并 <code>cancel()</code>，仅改状态字段是不够的。</li>
+  <li><strong>统一响应结构</strong> + <strong>异常处理顺序</strong>（401→403→400→429→409→404→500）让所有接口行为可预期，前端不需要为每个接口写特殊错误处理。</li>
   <li><strong>JSON 文件存储</strong> 在小规模场景下简单可靠，但并发写需要原子 rename；如果未来扩展到多实例部署，应改用 SQLite / Redis。</li>
   <li><strong>AI 命题</strong> 是最有"未来感"的部分，题目生成后能直接进题库被评测，整个链路验证了"AI 与基础功能不割裂"。</li>
 </ul>
@@ -476,7 +503,7 @@ def _parse_command(cmd: str) -> list[str]:
 <h3>5.3 改进建议</h3>
 <ul>
   <li>评测引擎可加入 <strong>编译缓存</strong>（相同源码不重复编译）；多测试点并发（<code>asyncio.gather</code>）可缩短总耗时。</li>
-  <li>AI 命题可加入 <strong>题面润色</strong>、<strong>测试点自动验证</strong>（用 AI 自己写标程并跑一遍），提高生成质量。</li>
+  <li>AI 命题可加入 <strong>题面润色</strong>、<strong>测试点自动验证</strong>（用 AI 自己写标程并跑一遍），提高生成质量与正确性。</li>
   <li>用户管理可加入 <strong>邮箱验证</strong>、<strong>密码强度策略</strong>、<strong>登录失败锁定</strong> 等更严密的安全机制。</li>
   <li>存储层可抽象为接口，<strong>未来可平滑替换为数据库</strong>（SQLite/PostgreSQL）而不影响上层逻辑。</li>
   <li>前端可加入 <strong>实时评测日志流</strong>（SSE 或 WebSocket）替代轮询，进一步降低响应延迟。</li>
