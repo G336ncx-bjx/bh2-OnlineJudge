@@ -79,7 +79,14 @@ def inject_css():
             padding-bottom: 2rem;
             padding-left: 2rem;
             padding-right: 2rem;
-            max-width: 100%;
+            max-width: 1100px;
+        }
+        /* 顶栏容器：突破 block-container 宽度限制，铺满视口 */
+        .oj-topbar {
+            margin-left: calc(-50vw + 50% + 2rem);
+            margin-right: calc(-50vw + 50% + 2rem);
+            padding-left: 1rem;
+            padding-right: 1rem;
         }
         /* 隐藏 iframe 组件默认边框与滚动 */
         iframe {
@@ -123,21 +130,20 @@ def inject_css():
         .oj-user-row {
             text-align: right;
             line-height: 1.4;
-            min-height: 22px;
+            white-space: nowrap;
         }
         .oj-logout-wrap {
             display: flex;
             justify-content: flex-end;
-            margin-top: 3px;
         }
         .oj-logout-wrap button {
             width: auto;
             border-radius: 8px;
             border: 1px solid #d6dfe4;
-            padding: 3px 14px;
+            padding: 6px 16px;
             font-size: 12px;
             white-space: nowrap !important;
-            min-height: 30px;
+            min-height: 34px;
             line-height: 1;
         }
         /* 用户区文字 */
@@ -170,70 +176,79 @@ def render_topbar():
 
     导航用 Streamlit 原生 st.button，点击走 rerun 机制，保证当前页内切换、
     点击区域完整可靠（不再用 iframe <a> 跳转，避免被组件沙箱拦截导致点不动）。
+    顶栏用 .oj-topbar 负 margin 铺满视口宽度，正文仍保持居中窄宽。
     """
     inject_css()
 
     current = st.session_state.get("menu", "题目")
 
-    # 三区布局：左标题 / 中导航 / 右用户（垂直居中对齐）
-    col_brand, col_nav, col_user = st.columns(
-        [1.25, 4.0, 1.25], gap="small", vertical_alignment="center"
-    )
+    with st.container():
+        st.markdown('<div class="oj-topbar"></div>', unsafe_allow_html=True)
 
-    # 左：logo + 标题
-    with col_brand:
-        st.markdown(
-            '<div style="display:flex;align-items:center;gap:10px;">'
-            '<span style="font-size:26px;line-height:1;">⚖️</span>'
-            '<span style="display:flex;flex-direction:column;line-height:1.2;">'
-            '<span class="oj-title">OJ 在线评测系统</span>'
-            '<span class="oj-subtitle">ONLINE JUDGE</span>'
-            "</span></div>",
-            unsafe_allow_html=True,
+        # 三区布局：左标题 / 中导航 / 右用户（垂直居中对齐）
+        col_brand, col_nav, col_user = st.columns(
+            [1.2, 4.2, 1.3], gap="small", vertical_alignment="center"
         )
 
-    # 中：导航按钮（原生 button，当前页切换）
-    with col_nav:
-        nav_cols = st.columns(len(MENU_ITEMS), gap="small", vertical_alignment="center")
-        for i, (name, icon) in enumerate(MENU_ITEMS):
-            with nav_cols[i]:
-                active = name == current
-                btn_type = "primary" if active else "secondary"
-                # 用 markdown 包裹类名以便 CSS 定位（原生 button 保证可点）
-                st.markdown('<div class="oj-navbtn"></div>', unsafe_allow_html=True)
-                if st.button(
-                    f"{icon} {name}",
-                    key=f"navbtn_{name}",
-                    type=btn_type,
-                    use_container_width=True,
-                ):
-                    st.session_state["menu"] = name
-                    st.rerun()
-
-    # 右：用户信息（含退出登录按钮，登录后显示）
-    with col_user:
-        if is_logged_in() and current_user():
-            u = current_user()
-            role_map = {"admin": "管理员", "user": "用户", "banned": "已封禁"}
-            role_text = role_map.get(u["role"], u["role"])
-            # 用户名、角色、退出按钮同行右对齐
+        # 左：logo + 标题
+        with col_brand:
             st.markdown(
-                f'<div class="oj-user-row">'
-                f'<span class="oj-user-name">{u["username"]}</span>'
-                f'<span class="oj-user-role">{role_text}</span></div>',
-                unsafe_allow_html=True,
-            )
-            st.markdown('<div class="oj-logout-wrap"></div>', unsafe_allow_html=True)
-            if st.button("退出登录", key="topbar_logout"):
-                logout()
-        else:
-            st.markdown(
-                '<div style="text-align:right;line-height:2.6;">'
-                '<span class="oj-user-guest">未登录</span></div>',
+                '<div style="display:flex;align-items:center;gap:10px;">'
+                '<span style="font-size:26px;line-height:1;">⚖️</span>'
+                '<span style="display:flex;flex-direction:column;line-height:1.2;">'
+                '<span class="oj-title">OJ 在线评测系统</span>'
+                '<span class="oj-subtitle">ONLINE JUDGE</span>'
+                "</span></div>",
                 unsafe_allow_html=True,
             )
 
-    st.markdown('<div class="oj-divider"></div>', unsafe_allow_html=True)
+        # 中：导航按钮（原生 button，当前页切换）
+        with col_nav:
+            nav_cols = st.columns(len(MENU_ITEMS), gap="small", vertical_alignment="center")
+            for i, (name, icon) in enumerate(MENU_ITEMS):
+                with nav_cols[i]:
+                    active = name == current
+                    btn_type = "primary" if active else "secondary"
+                    st.markdown('<div class="oj-navbtn"></div>', unsafe_allow_html=True)
+                    if st.button(
+                        f"{icon} {name}",
+                        key=f"navbtn_{name}",
+                        type=btn_type,
+                        use_container_width=True,
+                    ):
+                        st.session_state["menu"] = name
+                        st.rerun()
+
+        # 右：用户信息（含退出登录按钮，登录后显示）
+        with col_user:
+            if is_logged_in() and current_user():
+                u = current_user()
+                role_map = {"admin": "管理员", "user": "用户", "banned": "已封禁"}
+                role_text = role_map.get(u["role"], u["role"])
+                # 用户名+角色 与 退出按钮 同行，垂直居中，整体右对齐
+                ucol_info, ucol_btn = st.columns(
+                    [1.5, 1.0], gap="small", vertical_alignment="center"
+                )
+                with ucol_info:
+                    st.markdown(
+                        f'<div class="oj-user-row">'
+                        f'<span class="oj-user-name">{u["username"]}</span>'
+                        f'<span class="oj-user-role">{role_text}</span></div>',
+                        unsafe_allow_html=True,
+                    )
+                with ucol_btn:
+                    st.markdown('<div class="oj-logout-wrap"></div>', unsafe_allow_html=True)
+                    if st.button("退出登录", key="topbar_logout", use_container_width=True):
+                        logout()
+            else:
+                st.markdown(
+                    '<div style="text-align:right;line-height:2.6;">'
+                    '<span class="oj-user-guest">未登录</span></div>',
+                    unsafe_allow_html=True,
+                )
+
+        st.markdown('<div class="oj-divider"></div>', unsafe_allow_html=True)
+
     return current
 
 
