@@ -974,13 +974,22 @@ def render_submission():
                 break
 
     with st.form("submit_form"):
+        # selectbox 显式指定 key，避免 widget 状态漂移导致「用户选 A 却提交成 B」。
+        # 预选值只在首次进入时通过 index 设置，之后以用户手动选择为准。
+        sel_key = "submit_title_sel"
         if preselect_title and preselect_title in titles:
-            title = st.selectbox("题目", titles, index=titles.index(preselect_title))
+            title = st.selectbox(
+                "题目", titles, key=sel_key, index=titles.index(preselect_title)
+            )
         else:
-            title = st.selectbox("题目", titles)
-        lang = st.selectbox("语言", lang_names)
-        code_text = st.text_area("代码", height=300)
+            title = st.selectbox("题目", titles, key=sel_key)
+        lang = st.selectbox("语言", lang_names, key="submit_lang_sel")
+        code_text = st.text_area("代码", height=300, key="submit_code_area")
         if st.form_submit_button("提交评测"):
+            # 从 session_state 读取提交时刻的真实选择，而非闭包变量，避免 form 时序错位
+            title = st.session_state.get(sel_key, title)
+            lang = st.session_state.get("submit_lang_sel", lang)
+            code_text = st.session_state.get("submit_code_area", code_text)
             pid = title_to_id[title]
             code, data, msg = api_call(
                 "POST", "/api/submissions/",
