@@ -10,6 +10,7 @@
 - **用户管理**（Step 4）：注册/登录/登出、Session 认证、权限管理（user/admin/banned）
 - **评测日志**（Step 5）：测试点明细、可见性配置、访问审计
 - **前端交互**（Step 6）：Streamlit 三组页面（用户/题目/评测提交）
+- **AI 智能命题**（进阶）：需求出题、模型配置（URL/模型/密钥/计价币种）、实时进度轮询、中断、Token 与费用统计
 
 ## 技术栈
 
@@ -31,7 +32,8 @@ bh2/
 │   ├── deps.py              # 认证/权限/限流依赖
 │   ├── storage.py           # JSON 存储层
 │   ├── judge/               # 评测引擎（runner/engine/queue）
-│   └── routers/             # 路由（problems/languages/submissions/users/logs）
+│   ├── ai/                  # AI 命题引擎（LLM 调用/任务状态机/中断）
+│   └── routers/             # 路由（problems/languages/submissions/users/logs/ai）
 ├── frontend/app.py          # Streamlit 前端
 ├── data/                    # 运行时数据（git 忽略）
 ├── run_backend.py           # 后端启动脚本
