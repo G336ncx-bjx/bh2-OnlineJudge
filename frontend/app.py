@@ -1452,17 +1452,30 @@ def render_user_admin():
 
 # ---------------------------------------------------------------- AI 命题页面
 def render_ai():
-    st.subheader("AI 智能命题")
-    tab1, tab2 = st.tabs(["模型配置", "智能命题"])
+    # 标题行：左「AI 智能命题」+ 右「模型配置」按钮（点击弹窗，不刷新当前页面）
+    head_l, head_r = st.columns([3, 1], vertical_alignment="center")
+    with head_l:
+        st.subheader("AI 智能命题")
+    with head_r:
+        if st.button("⚙️ 模型配置", key="ai_model_config", use_container_width=True):
+            _ai_config_dialog()
 
-    with tab1:
-        render_ai_model_config()
+    # 展示当前模型配置摘要（若有）
+    code, cfg, _ = api_call("GET", "/api/ai/model-config")
+    current = cfg or {}
+    if current.get("provider_url"):
+        st.info(
+            f"当前配置：{current.get('provider_url')} / {current.get('model')} "
+            f"（密钥{'已' if current.get('api_key_configured') else '未'}配置）"
+        )
 
-    with tab2:
-        render_ai_problem()
+    # 主体：智能命题表单（不再用 tab 并列）
+    render_ai_problem()
 
 
-def render_ai_model_config():
+@st.dialog("模型配置", width="large")
+def _ai_config_dialog():
+    """模型配置弹窗：在弹窗内编辑配置，不刷新主页面。"""
     st.markdown("**配置模型提供商（OpenAI 兼容接口）**")
     code, cfg, _ = api_call("GET", "/api/ai/model-config")
     current = cfg or {}
@@ -1505,12 +1518,6 @@ def render_ai_model_config():
                 st.success("模型配置已更新")
             else:
                 st.error(f"配置失败: {msg}")
-
-    if current.get("provider_url"):
-        st.info(
-            f"当前配置：{current.get('provider_url')} / {current.get('model')} "
-            f"（密钥{'已' if current.get('api_key_configured') else '未'}配置）"
-        )
 
 
 def render_ai_problem():
