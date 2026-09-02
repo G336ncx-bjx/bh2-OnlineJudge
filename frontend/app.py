@@ -116,16 +116,23 @@ def inject_css():
             overflow: hidden;
             white-space: nowrap;
         }
-        /* 导航按钮：胶囊样式，保证完整可点击、不换行 */
+        /* 导航按钮：胶囊样式，保证完整可点击、不换行、不截断 */
         .oj-navbtn button {
             width: 100%;
+            min-width: 0;
             border-radius: 10px;
             border: 1px solid #d6dfe4;
-            padding: 7px 10px;
+            padding: 7px 6px;
             font-size: 13px;
             white-space: nowrap !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
             transition: all .15s ease;
             min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
         }
         .oj-navbtn button:hover {
             border-color: #1a2a6c;
@@ -143,11 +150,14 @@ def inject_css():
         }
         .oj-logout-wrap button {
             width: auto;
+            min-width: 0;
             border-radius: 8px;
             border: 1px solid #d6dfe4;
-            padding: 6px 16px;
+            padding: 6px 12px;
             font-size: 12px;
             white-space: nowrap !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
             min-height: 34px;
             line-height: 1;
         }
@@ -192,7 +202,7 @@ def render_topbar():
 
         # 三区布局：左标题 / 中导航 / 右用户（垂直居中对齐）
         col_brand, col_nav, col_user = st.columns(
-            [1.7, 4.0, 1.4], gap="small", vertical_alignment="center"
+            [1.6, 4.6, 1.6], gap="small", vertical_alignment="center"
         )
 
         # 左：logo + 标题
@@ -232,7 +242,7 @@ def render_topbar():
                 role_text = role_map.get(u["role"], u["role"])
                 # 用户名+角色 与 退出按钮 同行，垂直居中，整体右对齐
                 ucol_info, ucol_btn = st.columns(
-                    [1.5, 1.0], gap="small", vertical_alignment="center"
+                    [1.2, 1.1], gap="small", vertical_alignment="center"
                 )
                 with ucol_info:
                     st.markdown(
