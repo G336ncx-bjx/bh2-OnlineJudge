@@ -107,30 +107,35 @@ def inject_css():
             width: 100%;
             border-radius: 10px;
             border: 1px solid #d6dfe4;
-            padding: 8px 10px;
+            padding: 7px 10px;
             font-size: 13px;
             white-space: nowrap !important;
             transition: all .15s ease;
-            margin-top: 6px;
+            min-height: 40px;
         }
         .oj-navbtn button:hover {
             border-color: #1a2a6c;
             color: #1a2a6c;
         }
-        /* 顶栏右侧退出按钮：小巧、右对齐、文字不截断 */
-        .oj-logout-wrap button {
-            width: auto;
-            border-radius: 8px;
-            border: 1px solid #d6dfe4;
-            padding: 4px 10px;
-            font-size: 12px;
-            white-space: nowrap !important;
-            min-height: 30px;
-            margin-top: 6px;
+        /* 顶栏右侧：用户信息行 + 退出按钮 */
+        .oj-user-row {
+            text-align: right;
+            line-height: 1.4;
+            min-height: 22px;
         }
         .oj-logout-wrap {
             display: flex;
             justify-content: flex-end;
+            margin-top: 2px;
+        }
+        .oj-logout-wrap button {
+            width: auto;
+            border-radius: 8px;
+            border: 1px solid #d6dfe4;
+            padding: 3px 12px;
+            font-size: 12px;
+            white-space: nowrap !important;
+            min-height: 28px;
         }
         /* 用户区文字 */
         .oj-user-name {
@@ -167,14 +172,15 @@ def render_topbar():
 
     current = st.session_state.get("menu", "题目")
 
-    # 三区布局：左标题 / 中导航 / 右用户
-    col_brand, col_nav, col_user = st.columns([1.25, 4.0, 1.25], gap="small")
+    # 三区布局：左标题 / 中导航 / 右用户（垂直居中对齐）
+    col_brand, col_nav, col_user = st.columns(
+        [1.25, 4.0, 1.25], gap="small", vertical_alignment="center"
+    )
 
     # 左：logo + 标题
     with col_brand:
         st.markdown(
-            '<div style="display:flex;align-items:center;gap:10px;height:100%;'
-            'padding-top:4px;">'
+            '<div style="display:flex;align-items:center;gap:10px;">'
             '<span style="font-size:26px;line-height:1;">⚖️</span>'
             '<span style="display:flex;flex-direction:column;line-height:1.2;">'
             '<span class="oj-title">OJ 在线评测系统</span>'
@@ -185,7 +191,7 @@ def render_topbar():
 
     # 中：导航按钮（原生 button，当前页切换）
     with col_nav:
-        nav_cols = st.columns(len(MENU_ITEMS), gap="small")
+        nav_cols = st.columns(len(MENU_ITEMS), gap="small", vertical_alignment="center")
         for i, (name, icon) in enumerate(MENU_ITEMS):
             with nav_cols[i]:
                 active = name == current
@@ -207,18 +213,16 @@ def render_topbar():
             u = current_user()
             role_map = {"admin": "管理员", "user": "用户", "banned": "已封禁"}
             role_text = role_map.get(u["role"], u["role"])
-            ucol_name, ucol_btn = st.columns([2.6, 1.6], gap="small")
-            with ucol_name:
-                st.markdown(
-                    f'<div style="text-align:right;line-height:1.4;padding-top:10px;">'
-                    f'<span class="oj-user-name">{u["username"]}</span>'
-                    f'<span class="oj-user-role">{role_text}</span></div>',
-                    unsafe_allow_html=True,
-                )
-            with ucol_btn:
-                st.markdown('<div class="oj-logout-wrap"></div>', unsafe_allow_html=True)
-                if st.button("退出登录", key="topbar_logout"):
-                    logout()
+            # 用户信息与退出按钮同一行：用户名靠右，退出按钮紧随其后
+            st.markdown(
+                f'<div class="oj-user-row">'
+                f'<span class="oj-user-name">{u["username"]}</span>'
+                f'<span class="oj-user-role">{role_text}</span></div>',
+                unsafe_allow_html=True,
+            )
+            st.markdown('<div class="oj-logout-wrap"></div>', unsafe_allow_html=True)
+            if st.button("退出登录", key="topbar_logout"):
+                logout()
         else:
             st.markdown(
                 '<div style="text-align:right;line-height:2.6;">'
