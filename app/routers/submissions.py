@@ -68,15 +68,11 @@ async def list_submissions(
     if user.get("role") == "banned":
         return err(403, "用户已被封禁")
 
-    # 一级条件不可全空
-    if user_id is None and problem_id is None:
-        return err(400, "必须提供 user_id 或 problem_id")
-
     # page 非空但 page_size 空 → 参数错误
     if page is not None and page_size is None:
         return err(400, "提供 page 时必须同时提供 page_size")
 
-    # 权限：非管理员且未指定 user_id 时，只能看自己
+    # 权限：非管理员只能看自己；管理员可不指定 user_id 查看所有人
     if not is_admin(user):
         if user_id is not None and user_id != user["user_id"]:
             return err(403, "权限不足")
@@ -96,6 +92,7 @@ async def list_submissions(
             continue
         subs.append(s)
 
+    # 按提交时间倒序（新提交在前）
     subs.sort(key=lambda x: x.get("submit_time", ""), reverse=True)
     total = len(subs)
 
@@ -104,18 +101,22 @@ async def list_submissions(
         start = (page - 1) * page_size
         subs = subs[start:start + page_size]
 
-    # 列表只返回摘要信息；error/pending 只返回 id 和 status
+    # 列表返回摘要信息：统一带提交者/题目/时间等展示字段，error/pending 时 score 等为 None
     result = []
     for s in subs:
-        if s["status"] in ("error", "pending"):
-            result.append({"submission_id": s["submission_id"], "status": s["status"]})
-        else:
-            result.append({
-                "submission_id": s["submission_id"],
-                "status": s["status"],
-                "score": s.get("score"),
-                "counts": s.get("counts"),
-            })
+        problem = storage.get_problem(s.get("problem_id", ""))
+        result.append({
+            "submission_id": s["submission_id"],
+            "status": s["status"],
+            "username": s.get("username", ""),
+            "user_id": s.get("user_id", ""),
+            "problem_id": s.get("problem_id", ""),
+            "problem_title": problem.get("title", "") if problem else "",
+            "language": s.get("language", ""),
+            "submit_time": s.get("submit_time", ""),
+            "score": s.get("score") if s["status"] == "success" else None,
+            "counts": s.get("counts") if s["status"] == "success" else None,
+        })
     return ok({"total": total, "submissions": result})
 
 
@@ -134,11 +135,24 @@ async def get_submission_info(request: Request, submission_id: str):
         return err(403, "权限不足")
 
     if s["status"] == "pending":
-        return ok({"submission_id": s["submission_id"], "status": "pending"})
+        return ok({
+            "submission_id": s["submission_id"],
+            "status": "pending",
+            "problem_id": s.get("problem_id", ""),
+            "username": s.get("username", ""),
+            "language": s.get("language", ""),
+            "submit_time": s.get("submit_time", ""),
+        })
 
+    problem = storage.get_problem(s.get("problem_id", ""))
     return ok({
         "submission_id": s["submission_id"],
         "status": s["status"],
+        "problem_id": s.get("problem_id", ""),
+        "problem_title": problem.get("title", "") if problem else "",
+        "username": s.get("username", ""),
+        "language": s.get("language", ""),
+        "submit_time": s.get("submit_time", ""),
         "score": s.get("score"),
         "counts": s.get("counts"),
         "compile_info": s.get("compile_info"),

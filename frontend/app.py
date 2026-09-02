@@ -4,6 +4,7 @@
 覆盖三组页面：用户、题目、评测提交。
 """
 import json
+import time
 
 import requests
 import streamlit as st
@@ -275,6 +276,18 @@ def inject_css():
             color: #ffffff !important;
         }
         div[data-testid="stElementContainer"][class*="st-key-problem_create"] button:hover {
+            background: #187a34 !important;
+            border-color: #187a34 !important;
+        }
+        /* 提交评测相关绿色按钮（题目详情「提交评测」、提交页「查看提交记录」） */
+        div[data-testid="stElementContainer"][class*="st-key-submit_from_detail"] button,
+        div[data-testid="stElementContainer"][class*="st-key-goto_submission_list"] button {
+            background: #1e8e3e !important;
+            border-color: #1e8e3e !important;
+            color: #ffffff !important;
+        }
+        div[data-testid="stElementContainer"][class*="st-key-submit_from_detail"] button:hover,
+        div[data-testid="stElementContainer"][class*="st-key-goto_submission_list"] button:hover {
             background: #187a34 !important;
             border-color: #187a34 !important;
         }
@@ -661,16 +674,39 @@ def render_problem_detail():
             st.write(f"时间限制: {data.get('time_limit', 3.0)}s")
         with col2:
             st.write(f"内存限制: {data.get('memory_limit', 128)}MB")
+
+        # 操作行：提交评测（绿色）+ 返回列表
+        act_l, act_r = st.columns([1, 1], gap="small")
+        with act_l:
+            if st.button("🚀 提交评测", key=f"submit_from_detail_{pid}", use_container_width=True):
+                st.session_state["submit_preselect_pid"] = pid
+                st.session_state["menu"] = "评测提交"
+                st.session_state.pop("view_problem_id", None)
+                st.rerun()
+        with act_r:
+            if st.button("返回列表", use_container_width=True):
+                st.session_state.pop("view_problem_id", None)
+                st.rerun()
     else:
         st.error(msg)
-    if st.button("返回列表"):
-        st.session_state.pop("view_problem_id", None)
-        st.rerun()
+        if st.button("返回列表"):
+            st.session_state.pop("view_problem_id", None)
+            st.rerun()
 
 
 # ---------------------------------------------------------------- 评测提交页面
 def render_submission():
-    st.subheader("提交代码")
+    # 标题行：左「提交代码」+ 右「查看提交记录」按钮（参考题目列表新增按钮设计）
+    head_l, head_r = st.columns([3, 1], vertical_alignment="center")
+    with head_l:
+        st.subheader("提交代码")
+    with head_r:
+        if st.button("📋 查看提交记录", key="goto_submission_list", use_container_width=True):
+            st.session_state.pop("submit_preselect_pid", None)
+            st.session_state.pop("view_submission_id", None)
+            st.session_state["show_submission_list"] = True
+            st.rerun()
+
     code, probs, msg = api_call("GET", "/api/problems/")
     if code != 200:
         st.error(msg)
@@ -679,44 +715,91 @@ def render_submission():
         st.info("暂无题目可提交")
         return
 
+    # 题目下拉框显示「标题」，内部仍用 id 提交
+    title_to_id = {p["title"]: p["id"] for p in probs}
+    titles = list(title_to_id.keys())
+
     code, langs, msg = api_call("GET", "/api/languages/")
     lang_names = langs.get("name", []) if langs else []
 
+    # 预选题目（从题目详情页「提交评测」跳转而来）
+    preselect_pid = st.session_state.pop("submit_preselect_pid", None)
+    preselect_title = None
+    if preselect_pid:
+        for p in probs:
+            if p["id"] == preselect_pid:
+                preselect_title = p["title"]
+                break
+
     with st.form("submit_form"):
-        pid = st.selectbox("题目", [p["id"] for p in probs])
+        if preselect_title and preselect_title in titles:
+            title = st.selectbox("题目", titles, index=titles.index(preselect_title))
+        else:
+            title = st.selectbox("题目", titles)
         lang = st.selectbox("语言", lang_names)
         code_text = st.text_area("代码", height=300)
         if st.form_submit_button("提交评测"):
+            pid = title_to_id[title]
             code, data, msg = api_call(
                 "POST", "/api/submissions/",
                 {"problem_id": pid, "language": lang, "code": code_text},
             )
             if code == 200:
                 st.session_state["last_submission_id"] = data["submission_id"]
-                st.success(f"提交成功，提交编号 {data['submission_id']}")
+                st.session_state["view_submission_id"] = data["submission_id"]
+                st.session_state.pop("show_submission_list", None)
+                st.success(f"提交成功，提交编号 {data['submission_id']}，正在跳转查看评测结果...")
+                st.rerun()
             else:
                 st.error(f"提交失败: {msg}")
 
 
 def render_submission_list():
-    st.subheader("提交记录")
-    code, probs, _ = api_call("GET", "/api/problems/")
-    problem_ids = [p["id"] for p in probs] if probs else []
+    # 标题行：左「提交记录」+ 右「返回提交代码」按钮
+    head_l, head_r = st.columns([3, 1], vertical_alignment="center")
+    with head_l:
+        st.subheader("提交记录")
+    with head_r:
+        if st.button("✏️ 返回提交代码", key="goto_submit_code", use_container_width=True):
+            st.session_state.pop("show_submission_list", None)
+            st.rerun()
 
-    col1, col2 = st.columns(2)
-    with col1:
-        pid = st.selectbox("按题目筛选", ["(全部)"] + problem_ids)
-    with col2:
+    u = current_user()
+    is_admin_user = bool(u and u.get("role") == "admin")
+
+    code, probs, _ = api_call("GET", "/api/problems/")
+    title_to_id = {p["title"]: p["id"] for p in probs} if probs else {}
+    titles = list(title_to_id.keys())
+
+    # 筛选条件：题目（显示标题）、状态；管理员额外有用户筛选
+    n_filters = 3 if is_admin_user else 2
+    cols = st.columns(n_filters)
+    with cols[0]:
+        pid_title = st.selectbox("按题目筛选", ["(全部)"] + titles)
+    with cols[1]:
         status = st.selectbox(
             "按状态筛选",
             ["(全部)", "pending", "success", "error"],
         )
+    if is_admin_user:
+        code, users_data, _ = api_call("GET", "/api/users/")
+        # 管理员可见用户列表
+        user_names = []
+        if users_data and users_data.get("users"):
+            user_names = [x["username"] for x in users_data["users"]]
+        with cols[2]:
+            sel_user = st.selectbox("按用户筛选", ["(全部)"] + user_names)
 
     params = {}
-    if pid != "(全部)":
-        params["problem_id"] = pid
+    if pid_title != "(全部)":
+        params["problem_id"] = title_to_id[pid_title]
     if status != "(全部)":
         params["status"] = status
+    if is_admin_user and sel_user != "(全部)":
+        # 管理员按用户名筛选，需拿到该用户的 user_id
+        if users_data and users_data.get("users"):
+            uid_map = {x["username"]: x["user_id"] for x in users_data["users"]}
+            params["user_id"] = uid_map.get(sel_user)
 
     code, data, msg = api_call("GET", "/api/submissions/", params)
     if code != 200:
@@ -726,54 +809,113 @@ def render_submission_list():
     if not subs:
         st.info("暂无提交记录")
         return
+
+    # 表格化展示：提交编号、提交者、题目、状态、得分、语言、时间
+    status_zh = {"pending": "评测中", "success": "完成", "error": "出错"}
+    rows = []
     for s in subs:
-        sid = s["submission_id"]
         score = s.get("score")
-        score_str = f" | 得分 {score}" if score is not None else ""
-        if st.button(f"{sid} — {s['status']}{score_str}", key=f"sub_{sid}"):
-            st.session_state["view_submission_id"] = sid
+        score_str = f"{score} / {s.get('counts', 0) * 10}" if score is not None else "-"
+        rows.append({
+            "提交编号": s["submission_id"],
+            "提交者": s.get("username", ""),
+            "题目": s.get("problem_title") or s.get("problem_id", ""),
+            "状态": status_zh.get(s["status"], s["status"]),
+            "得分": score_str,
+            "语言": s.get("language", ""),
+            "提交时间": s.get("submit_time", ""),
+        })
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+
+    # 点击某条记录查看详情：用 selectbox 选择提交编号跳转
+    st.markdown("**查看某条提交详情**")
+    sub_ids = [s["submission_id"] for s in subs]
+    sel = st.selectbox("选择提交编号", sub_ids, label_visibility="collapsed")
+    if st.button("查看详情"):
+        st.session_state["view_submission_id"] = sel
+        st.rerun()
 
 
 def render_submission_detail():
     sid = st.session_state.get("view_submission_id")
     if not sid:
         return
-    st.subheader(f"提交详情: {sid}")
 
     code, data, msg = api_call("GET", f"/api/submissions/{sid}")
     if code != 200:
         st.error(msg)
+        if st.button("返回提交记录"):
+            st.session_state.pop("view_submission_id", None)
+            st.session_state["show_submission_list"] = True
+            st.rerun()
         return
 
-    if data.get("status") == "pending":
-        st.info("评测进行中...")
+    # 友好标题：优先题目名，其次题目 id，避免直接暴露裸 submission_id 哈希
+    title = data.get("problem_title") or data.get("problem_id") or sid
+    st.subheader(f"提交详情 · {title}")
+
+    # 元信息行
+    meta_cols = st.columns(4)
+    with meta_cols[0]:
+        st.markdown(f"**提交编号**\n\n{sid}")
+    with meta_cols[1]:
+        st.markdown(f"**提交者**\n\n{data.get('username', '-')}")
+    with meta_cols[2]:
+        st.markdown(f"**语言**\n\n{data.get('language', '-')}")
+    with meta_cols[3]:
+        st.markdown(f"**提交时间**\n\n{data.get('submit_time', '-')}")
+
+    status = data.get("status")
+    status_zh = {"pending": "评测中", "success": "评测完成", "error": "评测出错"}
+
+    if status == "pending":
+        # 轮询：间隔刷新直到评测结束
+        st.info(f"⏳ {status_zh.get(status, status)}，正在评测，请稍候...")
+        with st.spinner("评测进行中，自动刷新..."):
+            time.sleep(1.5)
+        st.rerun()
     else:
-        st.write(f"**状态**: {data.get('status')}")
-        st.write(f"**得分**: {data.get('score')} / {data.get('counts', 0) * 10}")
+        score = data.get("score")
+        counts = data.get("counts")
+        score_str = f"{score} / {counts * 10}" if score is not None else "-"
+
+        # 状态与得分用 metric 展示
+        m1, m2, m3 = st.columns(3)
+        with m1:
+            st.metric("状态", status_zh.get(status, status))
+        with m2:
+            st.metric("得分", score_str)
+        with m3:
+            st.metric("测试点数量", counts if counts is not None else "-")
+
         if data.get("compile_info"):
             ci = data["compile_info"]
-            st.markdown(f"**编译结果**: {ci.get('result')}")
+            compile_zh = {"success": "成功", "failed": "失败"}.get(ci.get("result"), ci.get("result"))
+            st.markdown(f"**编译结果**: {compile_zh}")
             if ci.get("message"):
                 st.code(ci["message"])
         if data.get("error_info"):
             st.error(data["error_info"])
 
         # 日志明细
-        code, log, msg = api_call("GET", f"/api/submissions/{sid}/log")
-        if code == 200 and log and log.get("details"):
+        code2, log, _ = api_call("GET", f"/api/submissions/{sid}/log")
+        if code2 == 200 and log and log.get("details"):
             st.markdown("**测试点明细**")
+            result_zh = {"AC": "✅ AC", "WA": "❌ WA", "TLE": "⏱ TLE", "MLE": "💾 MLE", "RE": "⚠ RE", "CE": "🔧 CE", "UNK": "❓ UNK"}
             rows = []
             for d in log["details"]:
                 rows.append({
                     "测试点": d["id"],
-                    "结果": d["result"],
+                    "结果": result_zh.get(d["result"], d["result"]),
                     "时间(s)": d["time"],
                     "内存(MB)": d["memory"],
                 })
-            st.table(rows)
+            st.dataframe(rows, use_container_width=True, hide_index=True)
 
-    if st.button("返回列表"):
+    # 底部返回按钮
+    if st.button("← 返回提交记录", key="sub_detail_back"):
         st.session_state.pop("view_submission_id", None)
+        st.session_state["show_submission_list"] = True
         st.rerun()
 
 
@@ -1039,15 +1181,10 @@ def main():
     elif menu == "评测提交":
         if "view_submission_id" in st.session_state:
             render_submission_detail()
+        elif st.session_state.get("show_submission_list"):
+            render_submission_list()
         else:
-            sub = st.radio(
-                "评测操作", ["提交代码", "提交记录"],
-                horizontal=True, label_visibility="collapsed", key="submit_sub",
-            )
-            if sub == "提交代码":
-                render_submission()
-            else:
-                render_submission_list()
+            render_submission()
     elif menu == "用户管理":
         render_user_admin()
     elif menu == "AI 命题":
