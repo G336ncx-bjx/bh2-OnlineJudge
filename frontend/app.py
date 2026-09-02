@@ -50,10 +50,84 @@ def current_user() -> dict | None:
     return st.session_state.get("user_info")
 
 
+def _restore_session():
+    """从浏览器 localStorage 读回会话（session cookie + 用户信息），刷新后恢复登录态。
+
+    Streamlit 的 session_state 是服务端内存态，刷新页面会丢失，导致登录态丢失。
+    为满足 step6「安全保存身份信息 / 正确保存和传递登录会话」的要求，把会话持久化
+    到浏览器 localStorage，脚本每次运行（含刷新）时读回。
+    仅在 session_state 里还没有 cookie 时才读回，避免覆盖已有会话。
+    """
+    if "session_cookie" in st.session_state:
+        return
+    # components.html 渲染在 iframe 中（与主页面同源），iframe 里的 JS 通过
+    # Streamlit.setComponentValue 把 localStorage 的值回传给 Python。
+    # 首次运行返回 None（组件尚未回传），组件 setComponentValue 会触发一次 rerun，
+    # 之后返回稳定值；值稳定后不再触发额外 rerun，故不会死循环。
+    stored = components.html(
+        """
+        <script>
+        (function () {
+            let v = '';
+            try { v = window.localStorage.getItem('oj_session') || ''; } catch (e) {}
+            if (window.Streamlit) {
+                window.Streamlit.setComponentValue(v);
+            }
+        })();
+        </script>
+        """,
+        height=0,
+        scrolling=False,
+    )
+    if not isinstance(stored, str) or not stored:
+        return
+    try:
+        payload = json.loads(stored)
+    except (json.JSONDecodeError, TypeError):
+        return
+    if payload.get("cookie"):
+        st.session_state["session_cookie"] = payload["cookie"]
+    if payload.get("user_info"):
+        st.session_state["user_info"] = payload["user_info"]
+
+
+def _persist_session():
+    """把当前会话（session cookie + 用户信息）写入浏览器 localStorage（登录成功后调用）。"""
+    payload = {
+        "cookie": st.session_state.get("session_cookie", ""),
+        "user_info": st.session_state.get("user_info"),
+    }
+    components.html(
+        f"""
+        <script>
+        (function () {{
+            try {{
+                window.localStorage.setItem('oj_session', {json.dumps(json.dumps(payload, ensure_ascii=False))});
+            }} catch (e) {{}}
+        }})();
+        </script>
+        """,
+        height=0,
+        scrolling=False,
+    )
+
+
 def logout():
     api_call("POST", "/api/auth/logout")
     st.session_state.pop("session_cookie", None)
     st.session_state.pop("user_info", None)
+    # 清除浏览器 localStorage 中持久化的会话
+    components.html(
+        """
+        <script>
+        (function () {
+            try { window.localStorage.removeItem('oj_session'); } catch (e) {}
+        })();
+        </script>
+        """,
+        height=0,
+        scrolling=False,
+    )
     st.rerun()
 
 
@@ -380,6 +454,7 @@ def render_login():
                 )
                 if code == 200:
                     st.session_state["user_info"] = data
+                    _persist_session()
                     st.success("登录成功")
                     st.rerun()
                 else:
@@ -948,6 +1023,9 @@ def render_ai_task_status(task_id: str):
 
 # ---------------------------------------------------------------- 主入口
 def main():
+    # 刷新后从 localStorage 恢复登录态（须在渲染顶栏、判断登录态之前）
+    _restore_session()
+
     menu = render_topbar()
 
     if not is_logged_in():
