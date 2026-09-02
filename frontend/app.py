@@ -34,6 +34,16 @@ TESTCASE_RESULT_ZH = {
     "CE": "编译错误",
     "UNK": "未知",
 }
+# 用户角色中文映射（内部仍用英文枚举值，仅展示层翻译）
+ROLE_ZH = {
+    "user": "普通用户",
+    "admin": "管理员",
+    "banned": "已封禁",
+}
+# 审计日志操作中文映射
+LOG_ACTION_ZH = {
+    "view_log": "查看评测日志",
+}
 
 
 # ---------------------------------------------------------------- API 封装
@@ -694,7 +704,7 @@ def render_submission():
             )
             if code == 200:
                 st.session_state["last_submission_id"] = data["submission_id"]
-                st.success(f"提交成功，submission_id={data['submission_id']}")
+                st.success(f"提交成功，提交编号 {data['submission_id']}")
             else:
                 st.error(f"提交失败: {msg}")
 
@@ -801,7 +811,7 @@ def render_user_admin():
                 rows.append({
                     "ID": user["user_id"],
                     "用户名": user["username"],
-                    "角色": user["role"],
+                    "角色": ROLE_ZH.get(user["role"], user["role"]),
                     "加入时间": user.get("join_time", ""),
                     "提交数": user.get("submit_count", 0),
                     "通过数": user.get("resolve_count", 0),
@@ -816,13 +826,17 @@ def render_user_admin():
             users = data.get("users", [])
             uid_map = {u["username"]: u["user_id"] for u in users}
             username = st.selectbox("选择用户", list(uid_map.keys()))
-            role = st.selectbox("新角色", ["user", "admin", "banned"])
+            # 角色下拉框：显示中文，内部用英文枚举值
+            role_zh_options = [ROLE_ZH[r] for r in ("user", "admin", "banned")]
+            role_zh = st.selectbox("新角色", role_zh_options)
+            role_reverse = {v: k for k, v in ROLE_ZH.items()}
+            role = role_reverse.get(role_zh, role_zh)
             if st.button("更新角色"):
                 code, d, msg = api_call(
                     "PUT", f"/api/users/{uid_map[username]}/role", {"role": role}
                 )
                 if code == 200:
-                    st.success(f"已将 {username} 角色改为 {role}")
+                    st.success(f"已将 {username} 的角色改为 {role_zh}")
                 else:
                     st.error(msg)
 
@@ -834,7 +848,7 @@ def render_user_admin():
                 rows.append({
                     "用户": log.get("user_id"),
                     "题目": log.get("problem_id"),
-                    "操作": log.get("action"),
+                    "操作": LOG_ACTION_ZH.get(log.get("action"), log.get("action")),
                     "时间": log.get("time"),
                     "状态": log.get("status"),
                 })
@@ -974,7 +988,7 @@ def render_ai_task_status(task_id: str):
         col1.metric("输入 Token", usage.get("input_tokens", 0))
         col2.metric("输出 Token", usage.get("output_tokens", 0))
         col3.metric("总 Token", usage.get("total_tokens", 0))
-        col4.metric("费用", f"${usage.get('cost', 0.0):.6f} {usage.get('currency', 'USD')}")
+        col4.metric("费用", f"${usage.get('cost', 0.0):.6f} 美元")
 
     # 运行中：刷新 + 中断按钮
     if status in ("pending", "running"):
