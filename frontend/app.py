@@ -786,20 +786,26 @@ def _paginated_list(key, items, row_renderer, page_size=10):
                 text_alignment="right",
             )
         with j_input:
-            jump_to = st.number_input(
-                "跳转页码", min_value=1, max_value=total_pages,
-                value=cur + 1, key=f"{page_key}_jump", label_visibility="collapsed",
+            # 用 text_input 而非 number_input，避免浏览器原生的英文越界提示气泡，
+            # 校验与中文提示全部自己掌控。
+            jump_raw = st.text_input(
+                "跳转页码", value=str(cur + 1), key=f"{page_key}_jump",
+                label_visibility="collapsed",
             )
         with j_btn:
             if st.button("跳转", key=f"{page_key}_go", use_container_width=True):
-                # 越界保护（number_input 已限制范围，双保险）
-                target = int(jump_to) - 1
-                if target < 0:
-                    target = 0
-                elif target >= total_pages:
-                    target = total_pages - 1
-                st.session_state[page_key] = target
-                st.rerun()
+                raw = (jump_raw or "").strip()
+                if not raw.isdigit():
+                    st.toast("请输入有效的页码数字")
+                else:
+                    target = int(raw) - 1
+                    if target < 0:
+                        st.toast(f"页码不能小于 1")
+                    elif target >= total_pages:
+                        st.toast(f"页码不能超过 {total_pages} 页")
+                    else:
+                        st.session_state[page_key] = target
+                        st.rerun()
 
 
 def render_problem_list():
