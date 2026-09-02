@@ -501,6 +501,61 @@ def inject_css():
         .oj-score-num { font-variant-numeric: tabular-nums; }
         .oj-score-full { color: #1e8e3e; font-weight: 800; }
         .oj-score-part { color: #b26a00; font-weight: 700; }
+        /* 用户信息（个人中心）：头部 */
+        .oj-profile-head {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 18px 20px;
+            background: linear-gradient(90deg, #eef1ff, #f7f9ff);
+            border: 1px solid #e6ebef;
+            border-radius: 14px;
+            margin: 6px 0 16px 0;
+            flex-wrap: wrap;
+        }
+        .oj-avatar {
+            font-size: 40px;
+            line-height: 1;
+            width: 64px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #ffffff;
+            border: 1px solid #e6ebef;
+            border-radius: 50%;
+            box-shadow: 0 2px 8px rgba(26, 42, 108, .08);
+            flex-shrink: 0;
+        }
+        .oj-profile-id {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .oj-profile-name {
+            font-size: 22px;
+            font-weight: 800;
+            color: #1a2a6c;
+            line-height: 1.2;
+        }
+        .oj-profile-uid {
+            margin-left: auto;
+            font-family: "SF Mono", Menlo, Consolas, monospace;
+            font-size: 12px;
+            color: #8a9aa5;
+        }
+        /* 用户角色徽章配色 */
+        .oj-role-admin, .oj-role-user, .oj-role-banned {
+            display: inline-block;
+            width: fit-content;
+            border-radius: 20px;
+            padding: 2px 12px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .oj-role-admin { background: #eef1ff; color: #1a2a6c; }
+        .oj-role-user  { background: #e7f6ec; color: #1e8e3e; }
+        .oj-role-banned{ background: #fdeaea; color: #c0392b; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -693,10 +748,60 @@ def render_user_info():
         st.warning("请先登录")
         return
     code, data, msg = api_call("GET", f"/api/users/{u['user_id']}")
-    if code == 200:
-        st.json(data)
-    else:
+    if code != 200 or not data:
         st.error(msg)
+        return
+
+    role = data.get("role", "user")
+    role_text = ROLE_ZH.get(role, role)
+    # 角色徽章配色：管理员深蓝、普通用户绿、封禁灰红
+    role_cls = {
+        "admin": "oj-role-admin",
+        "user": "oj-role-user",
+        "banned": "oj-role-banned",
+    }.get(role, "oj-role-user")
+
+    submit_count = data.get("submit_count", 0)
+    resolve_count = data.get("resolve_count", 0)
+    # 通过率 = 通过题数 / 提交数（避免除零）
+    rate = (resolve_count / submit_count * 100) if submit_count else 0.0
+
+    # 头部：头像 + 用户名 + 角色徽章 + 用户 ID
+    st.markdown(
+        f'<div class="oj-profile-head">'
+        f'<span class="oj-avatar">👤</span>'
+        f'<span class="oj-profile-id">'
+        f'<span class="oj-profile-name">{data.get("username", "")}</span>'
+        f'<span class="{role_cls}">{role_text}</span>'
+        f'</span>'
+        f'<span class="oj-profile-uid">ID: {data.get("user_id", "")}</span>'
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    # 统计卡片：提交数 / 通过题数 / 通过率
+    st.markdown(
+        '<div class="oj-stat-row">'
+        f'<div class="oj-stat-card"><div class="oj-stat-k">提交次数</div>'
+        f'<div class="oj-stat-v">{submit_count}</div></div>'
+        f'<div class="oj-stat-card"><div class="oj-stat-k">通过题数</div>'
+        f'<div class="oj-stat-v oj-stat-score">{resolve_count}</div></div>'
+        f'<div class="oj-stat-card"><div class="oj-stat-k">通过率</div>'
+        f'<div class="oj-stat-v">{rate:.1f}%</div></div>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    # 元信息卡片：加入时间 / 当前角色
+    st.markdown(
+        '<div class="oj-meta-card">'
+        f'<div class="oj-meta-item"><div class="oj-meta-k">加入时间</div>'
+        f'<div class="oj-meta-v">{data.get("join_time", "—")}</div></div>'
+        f'<div class="oj-meta-item"><div class="oj-meta-k">当前角色</div>'
+        f'<div class="oj-meta-v">{role_text}</div></div>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
 
 # ---------------------------------------------------------------- 题目页面
