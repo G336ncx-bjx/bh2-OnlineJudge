@@ -15,21 +15,21 @@ router = APIRouter(prefix="/api/submissions", tags=["submissions"])
 async def create_submission(request: Request, body: SubmissionCreate):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if user.get("role") == "banned":
-        return err(403, "user is banned")
+        return err(403, "用户已被封禁")
 
     problem = storage.get_problem(body.problem_id)
     if problem is None:
-        return err(404, "problem not found")
+        return err(404, "题目不存在")
 
     langs = storage.get_languages()
     if body.language not in langs:
-        return err(404, "language not found")
+        return err(404, "语言不存在")
 
     # 频率限制
     if not check_rate_limit(user["user_id"]):
-        return err(429, "too many submissions")
+        return err(429, "提交过于频繁，请稍后再试")
 
     submission_id = storage.new_id()
     submission = {
@@ -64,22 +64,22 @@ async def list_submissions(
 ):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if user.get("role") == "banned":
-        return err(403, "user is banned")
+        return err(403, "用户已被封禁")
 
     # 一级条件不可全空
     if user_id is None and problem_id is None:
-        return err(400, "user_id or problem_id required")
+        return err(400, "必须提供 user_id 或 problem_id")
 
     # page 非空但 page_size 空 → 参数错误
     if page is not None and page_size is None:
-        return err(400, "page_size required when page provided")
+        return err(400, "提供 page 时必须同时提供 page_size")
 
     # 权限：非管理员且未指定 user_id 时，只能看自己
     if not is_admin(user):
         if user_id is not None and user_id != user["user_id"]:
-            return err(403, "permission denied")
+            return err(403, "权限不足")
         user_id = user["user_id"]
 
     ids = storage.list_submission_ids()
@@ -123,15 +123,15 @@ async def list_submissions(
 async def get_submission_info(request: Request, submission_id: str):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if user.get("role") == "banned":
-        return err(403, "user is banned")
+        return err(403, "用户已被封禁")
     s = storage.get_submission(submission_id)
     if s is None:
-        return err(404, "submission not found")
+        return err(404, "提交不存在")
     # 仅本人或管理员
     if not is_admin(user) and s.get("user_id") != user["user_id"]:
-        return err(403, "permission denied")
+        return err(403, "权限不足")
 
     if s["status"] == "pending":
         return ok({"submission_id": s["submission_id"], "status": "pending"})
@@ -151,12 +151,12 @@ async def get_submission_info(request: Request, submission_id: str):
 async def get_submission_log(request: Request, submission_id: str):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if user.get("role") == "banned":
-        return err(403, "user is banned")
+        return err(403, "用户已被封禁")
     s = storage.get_submission(submission_id)
     if s is None:
-        return err(404, "submission not found")
+        return err(404, "提交不存在")
 
     problem = storage.get_problem(s.get("problem_id", ""))
     is_owner = s.get("user_id") == user["user_id"]
@@ -172,7 +172,7 @@ async def get_submission_log(request: Request, submission_id: str):
             "time": storage.now_str(),
             "status": 403,
         })
-        return err(403, "permission denied")
+        return err(403, "权限不足")
 
     # 记录审计
     storage.append_audit_log({
@@ -204,14 +204,14 @@ async def get_submission_log(request: Request, submission_id: str):
 async def rejudge(request: Request, submission_id: str):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if not is_admin(user):
-        return err(403, "permission denied")
+        return err(403, "权限不足")
     s = storage.get_submission(submission_id)
     if s is None:
-        return err(404, "submission not found")
+        return err(404, "提交不存在")
     if s["status"] == "pending":
-        return err(409, "submission already in progress")
+        return err(409, "该提交正在评测中")
 
     # 重置为 pending，重新入队
     s["status"] = "pending"

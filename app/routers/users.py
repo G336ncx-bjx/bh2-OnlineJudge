@@ -63,11 +63,11 @@ async def login(request: Request, body: LoginRequest):
             user = u
             break
     if user is None:
-        return err(401, "username or password incorrect")
+        return err(401, "用户名或密码错误")
     if not _verify_password(body.password, user.get("password_hash", "")):
-        return err(401, "username or password incorrect")
+        return err(401, "用户名或密码错误")
     if user.get("role") == "banned":
-        return err(403, "user is banned")
+        return err(403, "用户已被封禁")
 
     request.session["user_id"] = user["user_id"]
     return ok({
@@ -81,7 +81,7 @@ async def login(request: Request, body: LoginRequest):
 async def logout(request: Request):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     request.session.clear()
     return ok(None, "logout success")
 
@@ -93,14 +93,14 @@ async def register(request: Request, body: UserCreate):
     password = body.password
 
     if not (3 <= len(username) <= 40):
-        return err(400, "username length must be 3-40")
+        return err(400, "用户名长度须为 3-40 个字符")
     if len(password) < 6:
-        return err(400, "password length must be at least 6")
+        return err(400, "密码长度至少 6 位")
 
     users = storage.get_users()
     for u in users.values():
         if u.get("username") == username:
-            return err(400, "username already exists")
+            return err(400, "用户名已存在")
 
     user_id = storage.new_id()
     users[user_id] = {
@@ -127,21 +127,21 @@ async def register(request: Request, body: UserCreate):
 async def create_admin(request: Request, body: UserCreate):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if not is_admin(user):
-        return err(403, "permission denied")
+        return err(403, "权限不足")
 
     username = body.username
     password = body.password
     if not (3 <= len(username) <= 40):
-        return err(400, "username length must be 3-40")
+        return err(400, "用户名长度须为 3-40 个字符")
     if len(password) < 6:
-        return err(400, "password length must be at least 6")
+        return err(400, "密码长度至少 6 位")
 
     users = storage.get_users()
     for u in users.values():
         if u.get("username") == username:
-            return err(400, "username already exists")
+            return err(400, "用户名已存在")
 
     user_id = storage.new_id()
     users[user_id] = {
@@ -161,11 +161,11 @@ async def create_admin(request: Request, body: UserCreate):
 async def list_users(request: Request, page: int = None, page_size: int = None):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if not is_admin(user):
-        return err(403, "permission denied")
+        return err(403, "权限不足")
     if page is not None and page_size is None:
-        return err(400, "page_size required when page provided")
+        return err(400, "提供 page 时必须同时提供 page_size")
 
     users = storage.get_users()
     items = list(users.values())
@@ -193,14 +193,14 @@ async def list_users(request: Request, page: int = None, page_size: int = None):
 async def get_user_info(request: Request, user_id: str):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if user.get("role") == "banned":
-        return err(403, "user is banned")
+        return err(403, "用户已被封禁")
     target = storage.get_users().get(user_id)
     if target is None:
-        return err(404, "user not found")
+        return err(404, "用户不存在")
     if not is_admin(user) and user["user_id"] != user_id:
-        return err(403, "permission denied")
+        return err(403, "权限不足")
     return ok(_user_public(target))
 
 
@@ -208,16 +208,16 @@ async def get_user_info(request: Request, user_id: str):
 async def update_role(request: Request, user_id: str, body: RoleUpdate):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if not is_admin(user):
-        return err(403, "permission denied")
+        return err(403, "权限不足")
     if body.role not in ("admin", "user", "banned"):
-        return err(400, "invalid role")
+        return err(400, "无效的角色")
 
     users = storage.get_users()
     target = users.get(user_id)
     if target is None:
-        return err(404, "user not found")
+        return err(404, "用户不存在")
     target["role"] = body.role
     storage.save_users(users)
     return ok({"user_id": user_id, "role": body.role}, "role updated")

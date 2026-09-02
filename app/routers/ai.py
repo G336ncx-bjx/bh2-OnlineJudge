@@ -31,9 +31,9 @@ class ProblemTaskCreate(BaseModel):
 async def set_model_config(request: Request, body: ModelConfigBody):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if user.get("role") == "banned":
-        return err(403, "user is banned")
+        return err(403, "用户已被封禁")
 
     cfg = llm.get_model_config_raw()
     cfg["provider_url"] = body.provider_url
@@ -62,9 +62,9 @@ async def get_model_config(request: Request):
     """查询模型配置（不含密钥）。"""
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if user.get("role") == "banned":
-        return err(403, "user is banned")
+        return err(403, "用户已被封禁")
     return ok(llm.get_model_config())
 
 
@@ -73,21 +73,21 @@ async def get_model_config(request: Request):
 async def create_problem_task(request: Request, body: ProblemTaskCreate):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if user.get("role") == "banned":
-        return err(403, "user is banned")
+        return err(403, "用户已被封禁")
     if not body.requirement or not body.requirement.strip():
-        return err(400, "requirement is required")
+        return err(400, "命题需求不能为空")
 
     # 校验参考题目存在
     if body.problem_id:
         if storage.get_problem(body.problem_id) is None:
-            return err(404, "problem not found")
+            return err(404, "题目不存在")
 
     # 校验模型配置
     cfg = llm.get_model_config_raw()
     if not cfg.get("provider_url") or not cfg.get("model"):
-        return err(400, "model not configured")
+        return err(400, "模型未配置")
 
     task_id = storage.new_id()
     task = engine._new_task(
@@ -103,16 +103,16 @@ async def create_problem_task(request: Request, body: ProblemTaskCreate):
 async def get_problem_task(request: Request, task_id: str):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if user.get("role") == "banned":
-        return err(403, "user is banned")
+        return err(403, "用户已被封禁")
 
     task = engine._get_task(task_id)
     if task is None:
-        return err(404, "task not found")
+        return err(404, "任务不存在")
     # 仅创建者或管理员
     if not is_admin(user) and task.get("user_id") != user["user_id"]:
-        return err(403, "permission denied")
+        return err(403, "权限不足")
 
     return ok({
         "task_id": task["task_id"],
@@ -128,17 +128,17 @@ async def get_problem_task(request: Request, task_id: str):
 async def cancel_problem_task(request: Request, task_id: str):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if user.get("role") == "banned":
-        return err(403, "user is banned")
+        return err(403, "用户已被封禁")
 
     task = engine._get_task(task_id)
     if task is None:
-        return err(404, "task not found")
+        return err(404, "任务不存在")
     if not is_admin(user) and task.get("user_id") != user["user_id"]:
-        return err(403, "permission denied")
+        return err(403, "权限不足")
     if task["status"] in ("completed", "failed", "cancelled"):
-        return err(409, "task already finished")
+        return err(409, "任务已结束")
 
     task["status"] = "cancelled"
     task["progress"] = "任务已中断"

@@ -95,11 +95,11 @@ async def judge_submission(submission: dict) -> dict:
     # 题目或语言不存在 → 评测 error
     if problem is None:
         submission["status"] = "error"
-        submission["error_info"] = "problem not found"
+        submission["error_info"] = "题目不存在"
         return submission
     if lang is None:
         submission["status"] = "error"
-        submission["error_info"] = "language not found"
+        submission["error_info"] = "语言不存在"
         return submission
 
     # 资源限制：题目配置优先，否则用语言默认
@@ -182,7 +182,7 @@ async def judge_submission(submission: dict) -> dict:
 
     except Exception as e:  # 未知异常 → 评测 error
         submission["status"] = "error"
-        submission["error_info"] = f"judge error: {type(e).__name__}"
+        submission["error_info"] = f"评测出错: {type(e).__name__}"
         return submission
     finally:
         # 清理临时目录

@@ -39,9 +39,9 @@ def _validate_problem(p: dict) -> str | None:
 async def list_problems(request: Request):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if user.get("role") == "banned":
-        return err(403, "user is banned")
+        return err(403, "用户已被封禁")
     ids = storage.list_problem_ids()
     data = []
     for pid in ids:
@@ -55,15 +55,15 @@ async def list_problems(request: Request):
 async def create_problem(request: Request, body: ProblemCreate):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if user.get("role") == "banned":
-        return err(403, "user is banned")
+        return err(403, "用户已被封禁")
     p = body.model_dump()
     err_msg = _validate_problem(p)
     if err_msg:
         return err(400, err_msg)
     if storage.get_problem(p["id"]) is not None:
-        return err(409, "problem id already exists")
+        return err(409, "题目 id 已存在")
     p.setdefault("hint", "")
     p.setdefault("source", "")
     p.setdefault("tags", [])
@@ -80,12 +80,12 @@ async def create_problem(request: Request, body: ProblemCreate):
 async def get_problem_info(request: Request, problem_id: str):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if user.get("role") == "banned":
-        return err(403, "user is banned")
+        return err(403, "用户已被封禁")
     p = storage.get_problem(problem_id)
     if p is None:
-        return err(404, "problem not found")
+        return err(404, "题目不存在")
     return ok(p)
 
 
@@ -93,18 +93,18 @@ async def get_problem_info(request: Request, problem_id: str):
 async def update_problem(request: Request, problem_id: str, body: ProblemCreate):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if user.get("role") == "banned":
-        return err(403, "user is banned")
+        return err(403, "用户已被封禁")
     p = body.model_dump()
     if p.get("id") != problem_id:
-        return err(400, "id mismatch")
+        return err(400, "id 不一致")
     err_msg = _validate_problem(p)
     if err_msg:
         return err(400, err_msg)
     existing = storage.get_problem(problem_id)
     if existing is None:
-        return err(404, "problem not found")
+        return err(404, "题目不存在")
     # 保留 public_cases 配置
     p["public_cases"] = existing.get("public_cases", False)
     storage.save_problem(p)
@@ -115,11 +115,11 @@ async def update_problem(request: Request, problem_id: str, body: ProblemCreate)
 async def delete_problem(request: Request, problem_id: str):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if not is_admin(user):
-        return err(403, "permission denied")
+        return err(403, "权限不足")
     if storage.get_problem(problem_id) is None:
-        return err(404, "problem not found")
+        return err(404, "题目不存在")
     storage.delete_problem(problem_id)
     return ok({"id": problem_id}, "delete success")
 
@@ -129,16 +129,16 @@ async def set_log_visibility(request: Request, problem_id: str):
     """Step5：配置日志可见性（public_cases）。"""
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if not is_admin(user):
-        return err(403, "permission denied")
+        return err(403, "权限不足")
     p = storage.get_problem(problem_id)
     if p is None:
-        return err(404, "problem not found")
+        return err(404, "题目不存在")
     body = await request.json()
     public_cases = body.get("public_cases", False)
     if not isinstance(public_cases, bool):
-        return err(400, "public_cases must be bool")
+        return err(400, "public_cases 必须是布尔值")
     p["public_cases"] = public_cases
     storage.save_problem(p)
     return ok({"problem_id": problem_id, "public_cases": public_cases}, "log visibility updated")

@@ -20,16 +20,16 @@ async def list_languages(request: Request):
 async def register_language(request: Request, body: LanguageCreate):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if user.get("role") == "banned":
-        return err(403, "user is banned")
+        return err(403, "用户已被封禁")
     data = body.model_dump()
     if not data.get("name") or not data.get("file_ext") or not data.get("run_cmd"):
-        return err(400, "name, file_ext, run_cmd are required")
+        return err(400, "name、file_ext、run_cmd 不能为空")
 
     langs = storage.get_languages()
     if data["name"] in langs:
-        return err(409, "language already exists")
+        return err(409, "语言已存在")
 
     langs[data["name"]] = {
         "name": data["name"],

@@ -18,11 +18,11 @@ async def list_access_logs(
 ):
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if not is_admin(user):
-        return err(403, "permission denied")
+        return err(403, "权限不足")
     if page is not None and page_size is None:
-        return err(400, "page_size required when page provided")
+        return err(400, "提供 page 时必须同时提供 page_size")
 
     logs = storage.get_audit_logs()
     result = []

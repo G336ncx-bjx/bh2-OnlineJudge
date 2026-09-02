@@ -80,9 +80,9 @@ async def system_reset(request: Request):
     """系统重置：清空数据、退出登录、重建初始管理员。"""
     user = get_current_user(request)
     if user is None:
-        return err(401, "not logged in")
+        return err(401, "未登录")
     if not is_admin(user):
-        return err(403, "permission denied")
+        return err(403, "权限不足")
 
     request.session.clear()
     storage.reset_all()

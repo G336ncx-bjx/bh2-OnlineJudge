@@ -15,6 +15,26 @@ BACKEND = "http://127.0.0.1:8000"
 
 st.set_page_config(page_title="OJ 在线评测系统", page_icon="⚖️", layout="wide")
 
+# 评测状态 / 编译结果的中文映射（内部仍用英文枚举值，仅展示层翻译）
+SUBMISSION_STATUS_ZH = {
+    "pending": "评测中",
+    "success": "评测完成",
+    "error": "评测出错",
+}
+COMPILE_RESULT_ZH = {
+    "success": "成功",
+    "failed": "失败",
+}
+TESTCASE_RESULT_ZH = {
+    "AC": "通过",
+    "WA": "答案错误",
+    "TLE": "超时",
+    "MLE": "内存超限",
+    "RE": "运行错误",
+    "CE": "编译错误",
+    "UNK": "未知",
+}
+
 
 # ---------------------------------------------------------------- API 封装
 def api_call(method: str, path: str, data: dict = None, use_session: bool = True):
@@ -31,7 +51,7 @@ def api_call(method: str, path: str, data: dict = None, use_session: bool = True
         elif method == "DELETE":
             resp = requests.delete(url, cookies=cookies)
         else:
-            return None, None, "unsupported method"
+            return None, None, "不支持的请求方法"
         # 保存 session cookie
         if "session" in resp.cookies:
             st.session_state["session_cookie"] = resp.cookies["session"]
@@ -688,13 +708,18 @@ def render_submission_list():
     with col1:
         pid = st.selectbox("按题目筛选", ["(全部)"] + problem_ids)
     with col2:
-        status = st.selectbox("按状态筛选", ["(全部)", "pending", "success", "error"])
+        status = st.selectbox(
+            "按状态筛选",
+            ["(全部)"] + [SUBMISSION_STATUS_ZH[k] for k in ("pending", "success", "error")],
+        )
 
     params = {}
     if pid != "(全部)":
         params["problem_id"] = pid
     if status != "(全部)":
-        params["status"] = status
+        # 中文映射回英文枚举值传给后端
+        status_reverse = {v: k for k, v in SUBMISSION_STATUS_ZH.items()}
+        params["status"] = status_reverse.get(status, status)
 
     code, data, msg = api_call("GET", "/api/submissions/", params)
     if code != 200:
@@ -708,7 +733,8 @@ def render_submission_list():
         sid = s["submission_id"]
         score = s.get("score")
         score_str = f" | 得分 {score}" if score is not None else ""
-        if st.button(f"{sid} — {s['status']}{score_str}", key=f"sub_{sid}"):
+        status_zh = SUBMISSION_STATUS_ZH.get(s["status"], s["status"])
+        if st.button(f"{sid} — {status_zh}{score_str}", key=f"sub_{sid}"):
             st.session_state["view_submission_id"] = sid
 
 
@@ -726,11 +752,13 @@ def render_submission_detail():
     if data.get("status") == "pending":
         st.info("评测进行中...")
     else:
-        st.write(f"**状态**: {data.get('status')}")
+        status_zh = SUBMISSION_STATUS_ZH.get(data.get("status"), data.get("status"))
+        st.write(f"**状态**: {status_zh}")
         st.write(f"**得分**: {data.get('score')} / {data.get('counts', 0) * 10}")
         if data.get("compile_info"):
             ci = data["compile_info"]
-            st.markdown(f"**编译结果**: {ci.get('result')}")
+            compile_zh = COMPILE_RESULT_ZH.get(ci.get("result"), ci.get("result"))
+            st.markdown(f"**编译结果**: {compile_zh}")
             if ci.get("message"):
                 st.code(ci["message"])
         if data.get("error_info"):
@@ -744,7 +772,7 @@ def render_submission_detail():
             for d in log["details"]:
                 rows.append({
                     "测试点": d["id"],
-                    "结果": d["result"],
+                    "结果": TESTCASE_RESULT_ZH.get(d["result"], d["result"]),
                     "时间(s)": d["time"],
                     "内存(MB)": d["memory"],
                 })
