@@ -740,6 +740,49 @@ def _problem_form(prefill: dict | None = None, pid_editable: bool = True):
     )
 
 
+def _paginated_list(key, items, row_renderer, page_size=10):
+    """通用分页：对 items 切片后调用 row_renderer 逐行渲染，并在底部渲染分页控件。
+
+    key 用于在 session_state 中持久化「当前页码」，切页后 st.rerun() 生效。
+    """
+    page_key = f"page_{key}"
+    total = len(items)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+
+    # 页码越界时（如删除最后一页的最后一条）自动回退到最后一页
+    cur = st.session_state.get(page_key, 0)
+    if cur >= total_pages:
+        cur = total_pages - 1
+        st.session_state[page_key] = cur
+
+    start = cur * page_size
+    page_items = items[start:start + page_size]
+    for it in page_items:
+        row_renderer(it)
+
+    if total_pages <= 1:
+        return
+
+    # 分页控件：上一页 / 页码 / 下一页
+    st.markdown("---")
+    p_prev, p_mid, p_next = st.columns([1, 2, 1], vertical_alignment="center")
+    with p_prev:
+        if st.button("← 上一页", key=f"{page_key}_prev",
+                     disabled=(cur == 0), use_container_width=True):
+            st.session_state[page_key] = cur - 1
+            st.rerun()
+    with p_next:
+        if st.button("下一页 →", key=f"{page_key}_next",
+                     disabled=(cur >= total_pages - 1), use_container_width=True):
+            st.session_state[page_key] = cur + 1
+            st.rerun()
+    with p_mid:
+        st.markdown(
+            f"第 {cur + 1} / {total_pages} 页 · 共 {total} 条",
+            text_alignment="center",
+        )
+
+
 def render_problem_list():
     # 标题行：左「题目列表」+ 右「新增题目」绿色按钮
     head_l, head_r = st.columns([3, 1], vertical_alignment="center")
@@ -759,34 +802,37 @@ def render_problem_list():
         st.info("暂无题目")
         return
 
-    for p in data:
-        pid = p["id"]
-        title = p["title"]
-        info_col, act_col = st.columns([4, 1.6], vertical_alignment="center")
-        with info_col:
-            # 标题作为可点击按钮，点击进入详情（不展示内部 id）
-            if st.button(
-                title,
-                key=f"prob_view_{pid}",
-                use_container_width=True,
-            ):
-                st.session_state["view_problem_id"] = pid
+    _paginated_list("problems", data, _render_problem_row)
+
+
+def _render_problem_row(p):
+    pid = p["id"]
+    title = p["title"]
+    info_col, act_col = st.columns([4, 1.6], vertical_alignment="center")
+    with info_col:
+        # 标题作为可点击按钮，点击进入详情（不展示内部 id）
+        if st.button(
+            title,
+            key=f"prob_view_{pid}",
+            use_container_width=True,
+        ):
+            st.session_state["view_problem_id"] = pid
+            st.rerun()
+    with act_col:
+        b1, b2 = st.columns(2, gap="small")
+        with b1:
+            if st.button("编辑", key=f"prob_edit_{pid}", use_container_width=True):
+                st.session_state["problem_edit_id"] = pid
+                st.session_state["problem_view"] = "edit"
                 st.rerun()
-        with act_col:
-            b1, b2 = st.columns(2, gap="small")
-            with b1:
-                if st.button("编辑", key=f"prob_edit_{pid}", use_container_width=True):
-                    st.session_state["problem_edit_id"] = pid
-                    st.session_state["problem_view"] = "edit"
+        with b2:
+            if st.button("删除", key=f"prob_del_{pid}", use_container_width=True):
+                code2, _, msg2 = api_call("DELETE", f"/api/problems/{pid}")
+                if code2 == 200:
+                    st.success(f"题目「{title}」已删除")
                     st.rerun()
-            with b2:
-                if st.button("删除", key=f"prob_del_{pid}", use_container_width=True):
-                    code2, _, msg2 = api_call("DELETE", f"/api/problems/{pid}")
-                    if code2 == 200:
-                        st.success(f"题目「{title}」已删除")
-                        st.rerun()
-                    else:
-                        st.error(f"删除失败: {msg2}")
+                else:
+                    st.error(f"删除失败: {msg2}")
 
 
 def _render_back_to_list():
@@ -1021,7 +1067,7 @@ def render_submission_list():
         unsafe_allow_html=True,
     )
 
-    for s in subs:
+    def _render_sub_row(s):
         score = s.get("score")
         score_str = f"{score} / {s.get('counts', 0) * 10}" if score is not None else "-"
         title = s.get("problem_title") or s.get("problem_id", "")
@@ -1067,6 +1113,8 @@ def render_submission_list():
                 f"{s.get('submit_time', '-')}",
                 text_alignment="center",
             )
+
+    _paginated_list("submissions", subs, _render_sub_row)
 
 
 def render_submission_detail():
