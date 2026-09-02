@@ -196,7 +196,15 @@ async def cancel_problem_task(request: Request, task_id: str):
     if task["status"] in ("completed", "failed", "cancelled"):
         return err(409, "任务已结束")
 
+    # 先真正取消运行中的协程（打断正在进行的 LLM HTTP 调用）
+    cancelled = engine.cancel_task(task_id)
+
+    # 兜底：若协程已结束/未登记，仍置状态为 cancelled（幂等）
     task["status"] = "cancelled"
     task["progress"] = "任务已中断"
     engine._save_task(task)
-    return ok({"task_id": task_id, "status": "cancelled"}, "task cancelled")
+
+    return ok(
+        {"task_id": task_id, "status": "cancelled", "interrupted": cancelled},
+        "task cancelled",
+    )

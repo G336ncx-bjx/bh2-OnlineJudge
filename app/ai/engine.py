@@ -287,6 +287,27 @@ def _normalize_problem(problem: dict) -> Optional[dict]:
     return problem
 
 
+# 全局运行中的任务协程注册表：task_id -> asyncio.Task
+# 用于「真正终止」——中断时直接取消协程，打断正在进行的 LLM HTTP 调用。
+_RUNNING_TASKS: dict[str, "asyncio.Task"] = {}
+
+
 def start_task(task_id: str) -> None:
-    """在事件循环中启动命题任务协程。"""
-    asyncio.create_task(run_problem_task(task_id))
+    """在事件循环中启动命题任务协程，并登记以便中断时真正取消。"""
+    coro = run_problem_task(task_id)
+    t = asyncio.create_task(coro)
+    _RUNNING_TASKS[task_id] = t
+    # 任务结束后自动从注册表移除
+    t.add_done_callback(lambda _: _RUNNING_TASKS.pop(task_id, None))
+
+
+def cancel_task(task_id: str) -> bool:
+    """真正取消运行中的命题任务协程，打断正在进行的 LLM 调用。
+
+    返回 True 表示存在运行中的协程并已发起取消；False 表示协程已结束。
+    """
+    t = _RUNNING_TASKS.get(task_id)
+    if t is None:
+        return False
+    t.cancel()
+    return True
