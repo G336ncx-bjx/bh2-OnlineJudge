@@ -1,0 +1,16 @@
+# Web 框架
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+
+# 前端
+streamlit>=1.32
+
+# 评测资源监控
+psutil>=5.9
+
+# AI 模型调用
+httpx>=0.27
+
+# 密码加密
+bcrypt>=4.1
