@@ -507,7 +507,17 @@ def render_problem_list():
                         st.error(f"删除失败: {msg2}")
 
 
+def _render_back_to_list():
+    """新增/编辑页顶部的「返回列表」按钮，清除视图状态回到列表。"""
+    if st.button("← 返回列表", key="problem_back_to_list"):
+        st.session_state.pop("problem_view", None)
+        st.session_state.pop("problem_edit_id", None)
+        st.rerun()
+
+
 def render_problem_create():
+    st.subheader("新增题目")
+    _render_back_to_list()
     with st.form("create_problem_form"):
         submitted, payload = _problem_form()
     if submitted:
@@ -534,6 +544,7 @@ def render_problem_edit():
         st.error(msg)
         return
     st.subheader(f"编辑题目: {pid}")
+    _render_back_to_list()
     with st.form("edit_problem_form"):
         submitted, payload = _problem_form(prefill=data, pid_editable=False)
     if submitted:
