@@ -1040,7 +1040,7 @@ def render_submission_list():
             row = st.columns([1.0, 1.2, 2.0, 1.0, 1.2, 0.9, 1.7], gap="small",
                              vertical_alignment="center")
             row[0].markdown(
-                f"<div class=\"oj-cell-mono\">{s['submission_id']}</div>",
+                f"<span class=\"oj-cell-mono\">{s['submission_id']}</span>",
                 unsafe_allow_html=True, text_alignment="center",
             )
             row[1].markdown(
