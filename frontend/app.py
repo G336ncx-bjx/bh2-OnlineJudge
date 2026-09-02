@@ -98,13 +98,16 @@ def _restore_session():
     if payload.get("cookie") and payload.get("user_info"):
         st.session_state["session_cookie"] = payload["cookie"]
         st.session_state["user_info"] = payload["user_info"]
+        # 恢复当前菜单页，让刷新后停留在刷新前的页面而非回落到默认「题目」
+        if payload.get("menu"):
+            st.session_state["menu"] = payload["menu"]
 
 
 def _sync_localstorage():
     """在每次 run 的稳定阶段（main 末尾）同步浏览器 localStorage。
 
     三种状态分别处理，避免时序竞态把尚未恢复的会话误删：
-    - 已登录（有 cookie 且 user_info）→ 写入当前会话；
+    - 已登录（有 cookie 且 user_info）→ 写入当前会话（含当前菜单页）；
     - 明确登出（_logged_out 标记）→ 删除 localStorage 残留会话；
     - 其它（如「恢复探测中」的过渡 run，此时 st_javascript 尚未回传真实值）→ 不动。
 
@@ -118,7 +121,12 @@ def _sync_localstorage():
     cookie = st.session_state.get("session_cookie", "")
     user_info = st.session_state.get("user_info")
     if cookie and user_info:
-        payload = {"cookie": cookie, "user_info": user_info}
+        payload = {
+            "cookie": cookie,
+            "user_info": user_info,
+            # 同时持久化当前菜单页，刷新后恢复到原页面
+            "menu": st.session_state.get("menu", "题目"),
+        }
         components.html(
             "<script>(function(){try{window.localStorage.setItem('oj_session',"
             + json.dumps(json.dumps(payload, ensure_ascii=False))
