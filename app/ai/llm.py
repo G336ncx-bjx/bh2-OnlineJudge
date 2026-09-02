@@ -38,7 +38,7 @@ def save_model_config(cfg: dict) -> None:
 async def call_llm(
     messages: list[dict],
     temperature: float = 0.7,
-    max_tokens: int = 4096,
+    max_tokens: int = 8192,
     timeout: float = 120.0,
 ) -> tuple[str, dict]:
     """调用模型，返回 (content, usage)。
@@ -108,7 +108,8 @@ def calc_cost(usage: dict, cfg: dict) -> float:
 def parse_problem_json(text: str) -> Optional[dict]:
     """从模型返回文本中提取题目 JSON。
 
-    兼容 ```json ... ``` 代码块包裹或纯 JSON 的情况。
+    兼容 ```json ... ``` 代码块包裹或纯 JSON 的情况；
+    对因 max_tokens 截断而残缺的 JSON 做兜底修复（截到最后一个完整字段）。
     """
     text = text.strip()
     # 去掉代码块标记
@@ -130,5 +131,52 @@ def parse_problem_json(text: str) -> Optional[dict]:
             try:
                 return json.loads(text[start:end + 1])
             except json.JSONDecodeError:
-                return None
+                pass
+        # 兜底：max_tokens 截断导致尾部残缺，截到最后一个完整的顶层键值对
+        return _repair_truncated_json(text, start)
+
+
+def _repair_truncated_json(text: str, start: int) -> Optional[dict]:
+    """尝试修复被截断的 JSON：在最后一个「完整的顶层字段」边界处截断后补 } 再解析。
+
+    关键洞察：截断点几乎总在某个字段值中间（字符串、数组、对象被切断），
+    而它前面的最后一个顶层逗号，正好是「最后一个完整字段」的结尾。
+    因此扫描到所有「字符串外、深度为 0」的逗号位置，从后往前逐个尝试截断补 }。
+    """
+    if start == -1:
         return None
+    tail = text[start:]
+    # 收集所有「最外层对象顶层」逗号位置（字符串外、花括号深度为 1）
+    # 注意：tail 以最外层 '{' 开头且结尾的 '}' 因截断而缺失，所以最外层
+    # 对象的深度恒为 1（不会回到 0），其顶层字段逗号在 depth == 1 这一层。
+    commas = []
+    in_string = False
+    escape = False
+    depth = 0
+    for i, ch in enumerate(tail):
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+        elif ch == "," and depth == 1:
+            commas.append(i)
+    # 从后往前尝试：在每个顶层逗号处截断补 }，看能否解析出 dict
+    for cut in reversed(commas):
+        fixed = tail[:cut] + "}"
+        try:
+            obj = json.loads(fixed)
+            if isinstance(obj, dict):
+                return obj
+        except json.JSONDecodeError:
+            continue
+    return None
