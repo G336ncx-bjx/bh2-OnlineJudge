@@ -298,10 +298,6 @@ def inject_css():
         [data-testid="stDataFrame"] table th {
             text-align: center !important;
         }
-        /* 提交记录列表行文字居中 */
-        .oj-sub-row {
-            text-align: center;
-        }
         /* 提交详情：头部标题 */
         .oj-detail-head {
             font-size: 20px;
@@ -456,6 +452,44 @@ def inject_css():
         .oj-tag-re  { background: #fdeaea; color: #c0392b; }
         .oj-tag-ce  { background: #eef1f4; color: #55627a; }
         .oj-tag-unk { background: #eef1f4; color: #8a9aa5; }
+        /* 提交列表：状态徽章 */
+        .oj-tag-ok   { background: #e7f6ec; color: #1e8e3e; }
+        .oj-tag-err  { background: #fdeaea; color: #c0392b; }
+        .oj-tag-wait { background: #fdf3e2; color: #b26a00; }
+        /* 提交列表：表头渐变条 */
+        .oj-sub-head {
+            display: flex;
+            padding: 9px 12px;
+            background: linear-gradient(90deg, #eef1ff, #f5f8fc);
+            border: 1px solid #e6ebef;
+            border-bottom: none;
+            border-radius: 12px 12px 0 0;
+            color: #55627a;
+            font-size: 12px;
+            font-weight: 700;
+            text-align: center;
+            letter-spacing: .5px;
+        }
+        .oj-sub-head span { text-align: center; }
+        /* 提交列表：单元格文字 */
+        .oj-cell-mono {
+            font-family: "SF Mono", Menlo, Consolas, monospace;
+            font-size: 12px;
+            color: #55627a;
+            text-align: center;
+        }
+        .oj-cell-lang {
+            font-weight: 600;
+            color: #1a2a6c;
+            text-align: center;
+        }
+        .oj-score-num { font-variant-numeric: tabular-nums; text-align: center; }
+        .oj-score-full { color: #1e8e3e; font-weight: 800; }
+        .oj-score-part { color: #b26a00; font-weight: 700; }
+        /* 提交列表：卡片行文字统一居中 */
+        [data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stMarkdownContainer"] p {
+            text-align: center;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -979,13 +1013,20 @@ def render_submission_list():
         return
 
     # 表格化展示：提交编号、提交者、题目、状态、得分、语言、时间
+    # 采用卡片式行（st.container(border=True)）+ 原生按钮承载题目名点击，跳转最可靠。
     status_zh = {"pending": "评测中", "success": "完成", "error": "出错"}
     status_cls = {"pending": "oj-tag-wait", "success": "oj-tag-ok", "error": "oj-tag-err"}
     st.markdown("💡 点击**题目名称**即可查看该条提交的详情")
 
-    # 自绘 HTML 表格：整表作为一个可交互组件渲染，题目名点击通过
-    # Streamlit.setComponentValue 回传 submission_id（官方双向通信，可靠）。
-    rows_html = []
+    # 表头（渐变条）
+    st.markdown(
+        '<div class="oj-sub-head"><span style="flex:1.0">提交编号</span>'
+        '<span style="flex:1.2">提交者</span><span style="flex:2.0">题目</span>'
+        '<span style="flex:1.0">状态</span><span style="flex:1.2">得分</span>'
+        '<span style="flex:0.9">语言</span><span style="flex:1.7">提交时间</span></div>',
+        unsafe_allow_html=True,
+    )
+
     for s in subs:
         score = s.get("score")
         score_str = f"{score} / {s.get('counts', 0) * 10}" if score is not None else "-"
@@ -1000,68 +1041,23 @@ def render_submission_list():
                 score_cls = "oj-score-full"
             elif score > 0:
                 score_cls = "oj-score-part"
-        rows_html.append(
-            f"<tr>"
-            f"<td class=\"oj-cell-mono\">{s['submission_id']}</td>"
-            f"<td>{s.get('username', '-')}</td>"
-            f"<td><a class=\"oj-sub-link\" data-sid=\"{s['submission_id']}\">{title}</a></td>"
-            f"<td><span class=\"oj-tag {cls}\">{status_zh.get(stt, stt)}</span></td>"
-            f"<td class=\"{score_cls}\">{score_str}</td>"
-            f"<td class=\"oj-cell-lang\">{s.get('language', '-')}</td>"
-            f"<td>{s.get('submit_time', '-')}</td>"
-            f"</tr>"
-        )
-    table_html = (
-        "<div class=\"oj-case-table\">"
-        "<table><thead><tr>"
-        "<th>提交编号</th><th>提交者</th><th>题目</th><th>状态</th><th>得分</th><th>语言</th><th>提交时间</th>"
-        "</tr></thead>"
-        f"<tbody>{''.join(rows_html)}</tbody></table></div>"
-    )
-    # 组件：整表 + 点击回传脚本
-    component_html = f"""
-    <html><head><style>
-    {{
-        margin: 0; padding: 0; box-sizing: border-box;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    }}
-    .oj-case-table {{ margin: 8px 0; border: 1px solid #e6ebef; border-radius: 12px; overflow: hidden;
-        background: #fff; box-shadow: 0 2px 10px rgba(26,42,108,.06); }}
-    table {{ width: 100%; border-collapse: collapse; }}
-    th {{ background: #f5f8fc; color: #55627a; font-size: 12px; font-weight: 700; text-align: center;
-        padding: 9px 12px; border-bottom: 1px solid #e6ebef; letter-spacing: .5px; }}
-    td {{ text-align: center; padding: 9px 12px; font-size: 13px; color: #2b3445;
-        border-bottom: 1px solid #eef2f6; }}
-    tbody tr:last-child td {{ border-bottom: none; }}
-    tbody tr:nth-child(even) {{ background: #fafbfd; }}
-    tbody tr:hover {{ background: #f2f6ff; }}
-    .oj-sub-link {{ color: #1a2a6c; font-weight: 700; cursor: pointer; text-decoration: none;
-        border-bottom: 1px dashed #1a2a6c; }}
-    .oj-sub-link:hover {{ color: #1e8e3e; border-bottom-color: #1e8e3e; }}
-    .oj-tag {{ display: inline-block; min-width: 42px; padding: 2px 9px; border-radius: 20px;
-        font-size: 12px; font-weight: 800; text-align: center; letter-spacing: .5px; }}
-    .oj-tag-ok {{ background: #e7f6ec; color: #1e8e3e; }}
-    .oj-tag-err {{ background: #fdeaea; color: #c0392b; }}
-    .oj-tag-wait {{ background: #fdf3e2; color: #b26a00; }}
-    .oj-cell-mono {{ font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 12px; color: #55627a; }}
-    .oj-cell-lang {{ font-weight: 600; color: #1a2a6c; }}
-    .oj-score-num {{ font-variant-numeric: tabular-nums; }}
-    .oj-score-full {{ color: #1e8e3e; font-weight: 800; }}
-    .oj-score-part {{ color: #b26a00; font-weight: 700; }}
-    </style></head><body>
-    {table_html}
-    <script>
-    const links = document.querySelectorAll('a.oj-sub-link');
-    links.forEach(a => a.addEventListener('click', () => {{
-        window.parent.postMessage({{ type: 'streamlit:setComponentValue', value: a.dataset.sid }}, '*');
-    }}));
-    </script>
-    </body></html>
-    """
-    clicked_sid = components.html(component_html, height=40 + len(subs) * 42 + 20)
-    if isinstance(clicked_sid, str) and clicked_sid:
-        st.session_state["view_submission_id"] = clicked_sid
-        st.rerun()
+
+        with st.container(border=True):
+            row = st.columns([1.0, 1.2, 2.0, 1.0, 1.2, 0.9, 1.7], gap="small",
+                             vertical_alignment="center")
+            row[0].markdown(f"<div class=\"oj-cell-mono\">{s['submission_id']}</div>",
+                            unsafe_allow_html=True)
+            row[1].markdown(f"<div>{s.get('username', '-')}</div>", unsafe_allow_html=True)
+            with row[2]:
+                if st.button(title, key=f"sub_row_{s['submission_id']}", use_container_width=True):
+                    st.session_state["view_submission_id"] = s["submission_id"]
+                    st.rerun()
+            row[3].markdown(f"<div><span class=\"oj-tag {cls}\">{status_zh.get(stt, stt)}</span></div>",
+                            unsafe_allow_html=True)
+            row[4].markdown(f"<div class=\"{score_cls}\">{score_str}</div>", unsafe_allow_html=True)
+            row[5].markdown(f"<div class=\"oj-cell-lang\">{s.get('language', '-')}</div>",
+                            unsafe_allow_html=True)
+            row[6].markdown(f"<div>{s.get('submit_time', '-')}</div>", unsafe_allow_html=True)
 
 
 def render_submission_detail():
