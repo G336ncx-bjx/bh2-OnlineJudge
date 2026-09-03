@@ -30,6 +30,10 @@ def _validate_problem(p: dict) -> str | None:
         return "样例必须是列表"
     if not isinstance(p["testcases"], list):
         return "测试点必须是列表"
+    if not p["samples"]:
+        return "样例不能为空列表"
+    if not p["testcases"]:
+        return "测试点不能为空列表"
     for s in p["samples"]:
         if not isinstance(s, dict) or "input" not in s or "output" not in s:
             return "样例必须包含 input 和 output"
