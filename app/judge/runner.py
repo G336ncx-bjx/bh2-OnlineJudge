@@ -29,7 +29,7 @@ class RunResult:
 
 
 async def _monitor_memory(proc, limit_mb: float, flag: dict) -> None:
-    """后台协程轮询子进程内存，超限时杀掉并置标志。"""
+    """后台协程轮询子进程内存，记录峰值并超限时杀掉。"""
     if psutil is None:
         return
     try:
@@ -41,7 +41,16 @@ async def _monitor_memory(proc, limit_mb: float, flag: dict) -> None:
                 rss = p.memory_info().rss
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 break
-            if rss > limit_mb * 1024 * 1024:
+            # 持续记录峰值（含子进程）
+            peak = rss
+            try:
+                for child in p.children(recursive=True):
+                    peak += child.memory_info().rss
+            except Exception:
+                pass
+            if peak > flag["peak"]:
+                flag["peak"] = peak
+            if peak > limit_mb * 1024 * 1024:
                 flag["mle"] = True
                 _kill(proc)
                 break
@@ -98,7 +107,7 @@ async def run_command(
         env=full_env,
     )
 
-    flag: dict = {"mle": False}
+    flag: dict = {"mle": False, "peak": 0}
     monitor = asyncio.ensure_future(_monitor_memory(proc, memory_limit, flag))
 
     try:
@@ -123,9 +132,9 @@ async def run_command(
 
     elapsed = asyncio.get_event_loop().time() - start
 
-    # 估算内存峰值
-    mem_mb = 0.0
-    if psutil is not None:
+    # 优先用监控协程记录的峰值内存（进程退出后 rss 读不到）
+    mem_mb = flag["peak"] / 1024 / 1024
+    if mem_mb <= 0 and psutil is not None:
         try:
             mem_mb = psutil.Process(proc.pid).memory_info().rss / 1024 / 1024
         except Exception:
