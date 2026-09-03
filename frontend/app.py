@@ -1447,13 +1447,6 @@ def render_submission_detail():
             )
             st.markdown(table_html, unsafe_allow_html=True)
 
-    # 底部返回按钮（非 pending 时的兜底，pending 时顶栏已有返回入口）
-    if status != "pending":
-        if st.button("← 返回提交记录", key="sub_detail_back_bottom"):
-            st.session_state.pop("view_submission_id", None)
-            st.session_state["show_submission_list"] = True
-            st.rerun()
-
 
 # ---------------------------------------------------------------- 用户管理页面
 def render_user_admin():

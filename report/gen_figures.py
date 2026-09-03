@@ -65,7 +65,7 @@ def gen_architecture():
     # 三层结构
     # 前端层
     _draw_box(d, (60, 110, W - 60, 210), "", "#4e79a7", font_size=22)
-    d.text((100, 130), "Streamlit 前端（frontend/app.py，1794 行）", fill="white", font=_font(20, bold=True))
+    d.text((100, 130), "Streamlit 前端（frontend/app.py，1890 行）", fill="white", font=_font(20, bold=True))
     d.text((100, 170), "· 用户页面：注册 / 登录 / 个人中心", fill="white", font=_font(15))
     d.text((460, 170), "· 题目页面：列表 / 详情 / 新增 / 编辑", fill="white", font=_font(15))
     d.text((820, 170), "· 评测提交：选择题目与语言，查看评测结果", fill="white", font=_font(15))
@@ -77,7 +77,7 @@ def gen_architecture():
 
     # 后端层
     _draw_box(d, (60, 265, W - 60, 470), "", "#59a14f", font_size=22)
-    d.text((100, 285), "FastAPI 后端（全 async def 异步接口，2345 行，30+ 接口）", fill="white", font=_font(20, bold=True))
+    d.text((100, 285), "FastAPI 后端（全 async def 异步接口，2451 行，30+ 接口）", fill="white", font=_font(20, bold=True))
 
     # 路由层
     d.text((100, 330), "路由层 app/routers/", fill="white", font=_font(18, bold=True))
@@ -169,7 +169,7 @@ def gen_ai_flow():
         ("① 提交命题需求", "构建 prompt（知识点/难度/参考题目）", "#4e79a7"),
         ("② 生成题目主体", "LLM 返回题目 JSON（不含测试点，控制输出长度）", "#59a14f"),
         ("③ 解析题目 JSON", "兼容代码块包裹 + 截断兜底修复", "#f28e2b"),
-        ("④ 生成测试点", "二次调用 LLM，单独生成 testcases（≥5 个）", "#e15759"),
+        ("④ 分批生成测试点", "每批 3 个循环凑够 ≥5 个，单批失败可重试", "#e15759"),
         ("⑤ 校验补全", "必填字段校验 + 默认值补全 + public_cases", "#af7aa1"),
         ("⑥ 表单导入题库", "复用题目表单展示，可直接/修改后导入", "#76b7b2"),
     ]
