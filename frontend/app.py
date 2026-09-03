@@ -1383,11 +1383,19 @@ def render_submission_detail():
     status_zh = {"pending": "评测中", "success": "评测完成", "error": "评测出错"}
 
     if status == "pending":
-        # 轮询：间隔刷新直到评测结束
-        st.info(f"⏳ {status_zh.get(status, status)}，正在评测，请稍候...")
-        with st.spinner("评测进行中，自动刷新..."):
-            time.sleep(1.5)
-        st.rerun()
+        # 轮询：用 st.fragment(run_every) 让前端定时重跑这段 fragment，而不是服务端
+        # 无限 st.rerun()。后者会导致「元素变少」时 Streamlit 前端残留旧 DOM（详见
+        # streamlit#8360/#8599：st.rerun() 产生比上一帧更少元素时会渲染重复 key 元素），
+        # 表现为 pending 详情页下方叠加评测列表。
+        @st.fragment(run_every="2s")
+        def _poll_pending():
+            code2, d2, _ = api_call("GET", f"/api/submissions/{sid}")
+            if code2 == 200 and d2 and d2.get("status") != "pending":
+                # 评测结束，触发一次全量 rerun 渲染完整结果（元素变多，安全）
+                st.rerun()
+            else:
+                st.info(f"⏳ {status_zh.get(status, status)}，正在评测，请稍候...")
+        _poll_pending()
     else:
         score = data.get("score")
         counts = data.get("counts")
@@ -1780,18 +1788,26 @@ def render_ai_task_detail():
         col3.metric("总 Token", usage.get("total_tokens", 0))
         col4.metric("费用", f"{symbol}{usage.get('cost', 0.0):.6f}")
 
-    # 运行中：自动轮询刷新进度，同时提供「中断任务」按钮
+    # 运行中：用 st.fragment(run_every) 定时重跑这段，而不是服务端无限 st.rerun()
+    # （避免「元素变少」时前端残留旧 DOM 导致详情页下方叠加历史任务列表，见 streamlit#8360）
     if status in ("pending", "running"):
-        st.info("⏳ 任务进行中，正在自动刷新进度…")
-        with st.spinner(f"当前进度：{progress}"):
-            time.sleep(1.5)
-        if st.button("🛑 中断任务", key=f"ai_cancel_{task_id}", use_container_width=True):
-            code, _, msg = api_call("PUT", f"/api/ai/problem-tasks/{task_id}/cancel")
-            if code == 200:
-                st.warning("任务已中断")
+        @st.fragment(run_every="2s")
+        def _poll_ai():
+            code2, d2, _ = api_call("GET", f"/api/ai/problem-tasks/{task_id}")
+            if code2 == 200 and d2 and d2.get("status") not in ("pending", "running"):
+                # 任务结束（completed/failed/cancelled），触发一次全量 rerun 渲染结果
+                st.rerun()
             else:
-                st.error(msg)
-        st.rerun()
+                st.info("⏳ 任务进行中，正在自动刷新进度…")
+                if st.button("🛑 中断任务", key=f"ai_cancel_{task_id}", use_container_width=True):
+                    code, _, msg = api_call("PUT", f"/api/ai/problem-tasks/{task_id}/cancel")
+                    if code == 200:
+                        st.warning("任务已中断")
+                        st.rerun()
+                    else:
+                        st.error(msg)
+        _poll_ai()
+        return
 
     # 失败：给出提示（无结果可导入）
     if status == "failed":
