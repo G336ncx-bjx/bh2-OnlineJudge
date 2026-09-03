@@ -209,8 +209,8 @@ HTML = r"""<!DOCTYPE html>
   <div class="info">
     <div><strong>作业模块：</strong>基础模块 Step 1–6（30 分）+ 进阶模块 AI 智能命题（10 分）</div>
     <div><strong>技术栈：</strong>FastAPI（异步） + Streamlit + JSON 文件存储 + subprocess/psutil 评测 + DeepSeek 大模型</div>
-    <div><strong>代码规模：</strong>后端 17 个模块 2451 行 + 前端 1890 行 = 4341 行</div>
-    <div><strong>git 提交：</strong>77 次 Conventional Commits 规范提交</div>
+    <div><strong>代码规模：</strong>后端 17 个模块 2451 行 + 前端 1899 行 = 4350 行</div>
+    <div><strong>git 提交：</strong>79 次 Conventional Commits 规范提交</div>
   </div>
   <div style="margin-top: 50pt; color: #888; font-size: 10pt;">
     报告生成于 2026 年 9 月
@@ -243,7 +243,7 @@ HTML = r"""<!DOCTYPE html>
   <figcaption>图 1.1 OJ 系统整体架构</figcaption>
 </figure>
 
-<p><strong>前端层（Streamlit，<code>frontend/app.py</code>，1890 行）</strong>：通过 <code>requests</code> 库调用后端 REST API，不直接访问数据。包含用户、题目、评测提交、AI 命题四组页面，所有受保护操作均通过 Session Cookie 保持登录态，刷新页面通过 localStorage 恢复会话。</p>
+<p><strong>前端层（Streamlit，<code>frontend/app.py</code>，1899 行）</strong>：通过 <code>requests</code> 库调用后端 REST API，不直接访问数据。包含用户、题目、评测提交、AI 命题四组页面，所有受保护操作均通过 Session Cookie 保持登录态，刷新页面通过 localStorage 恢复会话。</p>
 
 <p><strong>后端层（FastAPI，<code>app/</code>，2451 行，30+ 个异步接口）</strong>：</p>
 <div class="grid">
@@ -289,7 +289,7 @@ HTML = r"""<!DOCTYPE html>
   <tr><td>Step 3 评测管理</td><td><code>app/routers/submissions.py</code>（235 行）</td><td>GET 列表/详情、PUT rejudge</td><td>5</td></tr>
   <tr><td>Step 4 用户管理</td><td><code>app/routers/users.py</code>（235 行）</td><td>注册/登录/登出、PUT 角色</td><td>5</td></tr>
   <tr><td>Step 5 评测日志</td><td><code>app/routers/logs.py</code>（43 行）</td><td>GET 日志、PUT 可见性、GET 审计</td><td>5</td></tr>
-  <tr><td>Step 6 前端</td><td><code>frontend/app.py</code>（1890 行）</td><td>—</td><td>5</td></tr>
+  <tr><td>Step 6 前端</td><td><code>frontend/app.py</code>（1899 行）</td><td>—</td><td>5</td></tr>
   <tr><td>AI 智能命题</td><td><code>app/ai/</code>（607 行） + <code>routers/ai.py</code>（210 行）</td><td>配置/任务/进度/取消</td><td>10</td></tr>
 </table>
 
@@ -421,6 +421,23 @@ def _parse_command(cmd: str) -> list[str]:
     ...</code></pre>
 <p><strong>效果</strong>：评测列表接口从 1.6s 降到 <strong>0.04s</strong>（约 40 倍），详情接口 0.005s；题目/用户/AI 任务列表一并提速。实测提交新评测后列表 total 正确 +1、状态正确流转，缓存一致性验证通过。</p>
 
+<h3>2.9 pending 详情页叠列表（前端渲染残留）</h3>
+<div class="box warn">
+  <strong>问题：</strong>任务仍在评测中（pending）时，从评测列表点进详情页，详情页下方会叠加出评测列表；但直接跳转或评测完成后点进则不触发。经浏览器复现并加调试确认，<strong>并非代码逻辑错误</strong>（<code>main()</code> 只调用了详情渲染函数），而是 Streamlit 前端的一个渲染残留问题。
+</div>
+<p><strong>根因</strong>：pending 分支用「<code>time.sleep</code> + 无限 <code>st.rerun()</code>」轮询。Streamlit 存在已知 bug（#8360/#8599）：当 <code>st.rerun()</code> 产生比上一帧更少的元素时（从元素繁多的「列表页」跳到元素较少的「pending 详情页」），前端 React 会渲染两个相同 key 的元素，无法删除旧的列表 DOM，导致列表残留在详情页下方。这正是「只有 pending（无限轮询）才触发、success（单次渲染）不触发」的原因。</p>
+<p><strong>解决方案</strong>：把轮询从「无限 <code>st.rerun()</code>」改为 <code>st.fragment(run_every="2s")</code>——fragment 只在前端定时重跑这一小块，不触发全量 rerun；等评测/任务真正结束时，fragment 内再 <code>st.rerun()</code> 一次渲染完整结果（此时元素变多，安全）：</p>
+<pre><code>if status == "pending":
+    @st.fragment(run_every="2s")
+    def _poll_pending():
+        code2, d2, _ = api_call("GET", f"/api/submissions/{sid}")
+        if code2 == 200 and d2 and d2.get("status") != "pending":
+            st.rerun()          # 评测结束，元素变多，安全地全量刷新
+        else:
+            st.info("⏳ 评测中，正在评测，请稍候...")
+    _poll_pending()</code></pre>
+<p>评测详情与 AI 命题详情两处轮询均按此重构。实测 pending 详情只显示「评测中」提示不再叠列表，评测完成后自动切换到 success 详情（测试点明细正常）。</p>
+
 <!-- ============================== 3. 成果展示 ============================== -->
 <h2>3. 成果展示</h2>
 
@@ -448,6 +465,7 @@ def _parse_command(cmd: str) -> list[str]:
   <tr><td>可见性配置</td><td>PUT public_cases=true</td><td>普通用户也能查日志</td><td class="ok">通过</td></tr>
   <tr><td>审计日志</td><td>GET /api/logs/access/</td><td>仅管理员，记录 view_logs 访问</td><td class="ok">通过</td></tr>
   <tr><td>性能优化</td><td>评测列表接口</td><td>1.6s → 0.04s（mtime 缓存）</td><td class="ok">通过</td></tr>
+  <tr><td>pending 详情</td><td>评测中从列表点进详情</td><td>不再叠列表（st.fragment 轮询）</td><td class="ok">通过</td></tr>
   <tr><td>AI 命题</td><td>真实 DeepSeek 出题</td><td>完整题目 JSON + 5 测试点，费用 ¥0.223</td><td class="ok">通过</td></tr>
   <tr><td>AI 中断</td><td>运行中 cancel</td><td>立即 cancelled，interrupted=true</td><td class="ok">通过</td></tr>
   <tr><td>AI 中断边界</td><td>已完成任务 cancel</td><td>409 拒绝（边界正确）</td><td class="ok">通过</td></tr>
@@ -519,7 +537,7 @@ def _parse_command(cmd: str) -> list[str]:
   <tr><td>基础模块实现（Step 1–6）</td><td>约 4 小时</td><td>脚手架 + 6 个模块的代码与端到端测试</td></tr>
   <tr><td>AI 智能命题模块</td><td>约 3 小时</td><td>模型调用、任务状态机、分阶段生成、Token 计费、真实出题与中断验证</td></tr>
   <tr><td>前端交互与体验打磨</td><td>约 2 小时</td><td>三组页面美化、会话持久化、分页、AI 配置弹窗与历史列表</td></tr>
-  <tr><td>持续提交与推送</td><td>约 1 小时</td><td>77 次 Conventional Commits + push</td></tr>
+  <tr><td>持续提交与推送</td><td>约 1 小时</td><td>79 次 Conventional Commits + push</td></tr>
   <tr><td>报告与配图</td><td>约 1 小时</td><td>本文档 + 3 张配图</td></tr>
   <tr><th>总计</th><th>约 12.5 小时</th><th>—</th></tr>
 </table>

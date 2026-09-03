@@ -65,7 +65,7 @@ def gen_architecture():
     # 三层结构
     # 前端层
     _draw_box(d, (60, 110, W - 60, 210), "", "#4e79a7", font_size=22)
-    d.text((100, 130), "Streamlit 前端（frontend/app.py，1890 行）", fill="white", font=_font(20, bold=True))
+    d.text((100, 130), "Streamlit 前端（frontend/app.py，1899 行）", fill="white", font=_font(20, bold=True))
     d.text((100, 170), "· 用户页面：注册 / 登录 / 个人中心", fill="white", font=_font(15))
     d.text((460, 170), "· 题目页面：列表 / 详情 / 新增 / 编辑", fill="white", font=_font(15))
     d.text((820, 170), "· 评测提交：选择题目与语言，查看评测结果", fill="white", font=_font(15))
