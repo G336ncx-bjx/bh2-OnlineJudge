@@ -617,12 +617,9 @@ def render_topbar():
                         type=btn_type,
                         use_container_width=True,
                     ):
+                        # 切换菜单时清除所有其它菜单的子视图状态，避免视图叠加
+                        _clear_view_state()
                         st.session_state["menu"] = name
-                        # 点顶栏「题目」总是回到题目列表页，清除子视图状态
-                        if name == "题目":
-                            st.session_state.pop("view_problem_id", None)
-                            st.session_state.pop("problem_view", None)
-                            st.session_state.pop("problem_edit_id", None)
                         st.rerun()
 
         # 右：用户信息（含退出登录按钮，登录后显示）
@@ -974,12 +971,35 @@ def _render_problem_row(p):
                 st.rerun()
         with b2:
             if st.button("删除", key=f"prob_del_{pid}", use_container_width=True):
-                code2, _, msg2 = api_call("DELETE", f"/api/problems/{pid}")
-                if code2 == 200:
-                    st.success(f"题目「{title}」已删除")
-                    st.rerun()
-                else:
-                    st.error(f"删除失败: {msg2}")
+                st.session_state["del_problem_id"] = pid
+                st.session_state["del_problem_title"] = title
+                _confirm_delete_problem()
+
+
+@st.dialog("删除题目")
+def _confirm_delete_problem():
+    """删除题目的确认弹窗：在弹窗内二次确认，避免提示框撑破列表行布局。"""
+    pid = st.session_state.get("del_problem_id")
+    title = st.session_state.get("del_problem_title", pid)
+    if not pid:
+        return
+    st.warning(f"确定要删除题目「{title}」吗？该操作不可撤销。")
+    col_cancel, col_ok = st.columns(2, gap="small")
+    with col_cancel:
+        if st.button("取消", key="del_cancel", use_container_width=True):
+            st.session_state.pop("del_problem_id", None)
+            st.session_state.pop("del_problem_title", None)
+            st.rerun()
+    with col_ok:
+        if st.button("确认删除", key="del_confirm", type="primary", use_container_width=True):
+            code2, _, msg2 = api_call("DELETE", f"/api/problems/{pid}")
+            if code2 == 200:
+                st.session_state.pop("del_problem_id", None)
+                st.session_state.pop("del_problem_title", None)
+                st.success(f"题目「{title}」已删除")
+                st.rerun()
+            else:
+                st.error(f"删除失败: {msg2}")
 
 
 def _render_back_to_list():
@@ -1065,12 +1085,10 @@ def render_problem_detail():
         act_l, act_r = st.columns([1, 1], gap="small")
         with act_l:
             if st.button("🚀 提交评测", key=f"submit_from_detail_{pid}", use_container_width=True):
+                # 跨菜单跳转：先统一清理所有子视图状态，再设置目标状态
+                _clear_view_state()
                 st.session_state["submit_preselect_pid"] = pid
                 st.session_state["menu"] = "评测提交"
-                st.session_state.pop("view_problem_id", None)
-                # 清除评测相关的残留状态，确保进入「提交代码」页而非详情页
-                st.session_state.pop("view_submission_id", None)
-                st.session_state.pop("show_submission_list", None)
                 st.rerun()
         with act_r:
             if st.button("返回列表", use_container_width=True):
@@ -1146,6 +1164,7 @@ def render_submission():
                 st.session_state["last_submission_id"] = data["submission_id"]
                 st.session_state["view_submission_id"] = data["submission_id"]
                 st.session_state.pop("show_submission_list", None)
+                st.session_state.pop("submit_preselect_pid", None)
                 st.success(f"提交成功，提交编号 {data['submission_id']}，正在跳转查看评测结果...")
                 st.rerun()
             else:
@@ -1252,6 +1271,7 @@ def render_submission_list():
             with row[2]:
                 if st.button(title, key=f"sub_row_{s['submission_id']}", use_container_width=True):
                     st.session_state["view_submission_id"] = s["submission_id"]
+                    st.session_state.pop("show_submission_list", None)
                     st.rerun()
             row[3].markdown(
                 f"<span class=\"oj-tag {cls}\">{status_zh.get(stt, stt)}</span>",
@@ -1281,7 +1301,7 @@ def render_submission_detail():
     code, data, msg = api_call("GET", f"/api/submissions/{sid}")
     if code != 200:
         st.error(msg)
-        if st.button("返回提交记录"):
+        if st.button("返回提交记录", key="sub_detail_back_err"):
             st.session_state.pop("view_submission_id", None)
             st.session_state["show_submission_list"] = True
             st.rerun()
@@ -1310,6 +1330,20 @@ def render_submission_detail():
 
     status = data.get("status")
     status_zh = {"pending": "评测中", "success": "评测完成", "error": "评测出错"}
+
+    # 顶部操作栏：无论评测是否结束都渲染，保证评测进行中也能离开本页
+    # （返回提交记录 / 继续提交新评测），避免「评测未结束就被锁死在详情页」。
+    back_l, back_r = st.columns(2, gap="small")
+    with back_l:
+        if st.button("← 返回提交记录", key="sub_detail_back", use_container_width=True):
+            st.session_state.pop("view_submission_id", None)
+            st.session_state["show_submission_list"] = True
+            st.rerun()
+    with back_r:
+        if st.button("✏️ 提交新评测", key="sub_detail_new_submit", use_container_width=True):
+            st.session_state.pop("view_submission_id", None)
+            st.session_state.pop("show_submission_list", None)
+            st.rerun()
 
     if status == "pending":
         # 轮询：间隔刷新直到评测结束
@@ -1376,11 +1410,12 @@ def render_submission_detail():
             )
             st.markdown(table_html, unsafe_allow_html=True)
 
-    # 底部返回按钮
-    if st.button("← 返回提交记录", key="sub_detail_back"):
-        st.session_state.pop("view_submission_id", None)
-        st.session_state["show_submission_list"] = True
-        st.rerun()
+    # 底部返回按钮（非 pending 时的兜底，pending 时顶栏已有返回入口）
+    if status != "pending":
+        if st.button("← 返回提交记录", key="sub_detail_back_bottom"):
+            st.session_state.pop("view_submission_id", None)
+            st.session_state["show_submission_list"] = True
+            st.rerun()
 
 
 # ---------------------------------------------------------------- 用户管理页面
@@ -1749,6 +1784,27 @@ def render_ai_task_detail():
                     st.rerun()
                 else:
                     st.error(f"加入题库失败: {msg}")
+
+
+# ---------------------------------------------------------------- 视图状态管理
+def _clear_view_state():
+    """清除所有页面子视图状态，保证同一时刻只有一种视图渲染。
+
+    各菜单的子视图状态（题目详情/新增/编辑、提交详情/列表、AI 历史/详情）
+    若在切换菜单或进入另一视图时残留，会导致多个视图叠加渲染在同一页下方。
+    该函数用于在「切换菜单 / 进入某个视图前」统一清理，根治叠层问题。
+    """
+    for key in (
+        "view_problem_id",
+        "problem_view",
+        "problem_edit_id",
+        "view_submission_id",
+        "show_submission_list",
+        "submit_preselect_pid",
+        "ai_view",
+        "ai_task_id",
+    ):
+        st.session_state.pop(key, None)
 
 
 # ---------------------------------------------------------------- 主入口
