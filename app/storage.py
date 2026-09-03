@@ -19,15 +19,30 @@ from . import config
 # 全局读写锁（课程项目规模小，单一锁足够）
 _lock = threading.RLock()
 
+# 读缓存：path -> (mtime_ns, size, data)
+# 基于文件 mtime 校验，文件未变化时直接返回缓存，避免列表接口逐个读文件导致慢。
+# 写操作通过 os.replace 原子替换文件，必然改变 mtime，因此下次读会自动刷新缓存，
+# 数据新鲜性有保证，无需手动失效。
+_read_cache: dict[str, tuple[int, int, Any]] = {}
+
 
 # ---------------------------------------------------------------- 通用工具
 def _read_json(path: str, default: Any) -> Any:
     if not os.path.exists(path):
+        _read_cache.pop(path, None)
         return default
     try:
+        st = os.stat(path)
+        key = (st.st_mtime_ns, st.st_size)
+        cached = _read_cache.get(path)
+        if cached is not None and cached[0] == key[0] and cached[1] == key[1]:
+            return cached[2]
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+        _read_cache[path] = (key[0], key[1], data)
+        return data
     except (json.JSONDecodeError, OSError):
+        _read_cache.pop(path, None)
         return default
 
 
@@ -37,6 +52,8 @@ def _write_json(path: str, obj: Any) -> None:
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(obj, f, ensure_ascii=False, indent=2)
     os.replace(tmp, path)
+    # 写后主动失效缓存（避免同进程内 mtime 相同导致的极小概率脏读）
+    _read_cache.pop(path, None)
 
 
 def new_id() -> str:
@@ -72,6 +89,7 @@ def save_problem(problem: dict) -> None:
 
 def delete_problem(problem_id: str) -> None:
     path = os.path.join(config.PROBLEMS_DIR, f"{problem_id}.json")
+    _read_cache.pop(path, None)
     if os.path.exists(path):
         os.remove(path)
 
@@ -145,3 +163,4 @@ def reset_all() -> None:
                     os.remove(f)
                 except OSError:
                     pass
+        _read_cache.clear()
