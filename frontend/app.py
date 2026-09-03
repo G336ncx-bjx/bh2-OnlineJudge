@@ -808,20 +808,32 @@ def render_user_info():
 # ---------------------------------------------------------------- 题目页面
 def _problem_payload(pid, title, description, input_desc, output_desc,
                      constraints, samples_str, testcases_str, hint,
-                     time_limit, memory_limit):
+                     time_limit, memory_limit, tags=None, difficulty="",
+                     source="", author=""):
     """把表单字段组装为题目 payload，JSON 解析失败返回 None。"""
     try:
         samples_list = json.loads(samples_str) if samples_str.strip() else []
         testcases_list = json.loads(testcases_str) if testcases_str.strip() else []
     except json.JSONDecodeError:
         return None
-    return {
+    payload = {
         "id": pid, "title": title, "description": description,
         "input_description": input_desc, "output_description": output_desc,
         "samples": samples_list, "constraints": constraints,
         "testcases": testcases_list, "hint": hint,
         "time_limit": time_limit, "memory_limit": memory_limit,
     }
+    # 可选字段：标签/难度/来源/作者（AI 命题会生成 tags/difficulty，导入时需保留，
+    # 否则「题目合理性」要求的知识点、难度信息会丢失）
+    if tags:
+        payload["tags"] = tags
+    if difficulty:
+        payload["difficulty"] = difficulty
+    if source:
+        payload["source"] = source
+    if author:
+        payload["author"] = author
+    return payload
 
 
 def _problem_form(prefill: dict | None = None, pid_editable: bool = True):
@@ -849,6 +861,12 @@ def _problem_form(prefill: dict | None = None, pid_editable: bool = True):
         if p.get("testcases") else "",
     )
     hint = st.text_input("提示 (可选)", value=p.get("hint", ""))
+    # 标签与难度（AI 命题生成的结果含 tags/difficulty，须可预填与编辑）
+    tags = st.text_input(
+        "标签 (可选，逗号分隔)",
+        value=", ".join(p.get("tags", [])) if p.get("tags") else "",
+    )
+    difficulty = st.text_input("难度 (可选)", value=p.get("difficulty", ""))
     c1, c2 = st.columns(2)
     with c1:
         time_limit = st.number_input("时间限制(s)", value=float(p.get("time_limit", 3.0)), step=0.5)
@@ -856,9 +874,13 @@ def _problem_form(prefill: dict | None = None, pid_editable: bool = True):
         memory_limit = st.number_input("内存限制(MB)", value=int(p.get("memory_limit", 128)), step=16)
 
     submitted = st.form_submit_button("提交", type="primary", use_container_width=True)
+    # 标签：逗号分隔字符串 → 列表（去除空项）
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
     return submitted, _problem_payload(
         pid, title, description, input_desc, output_desc, constraints,
         samples_str, testcases_str, hint, time_limit, memory_limit,
+        tags=tag_list, difficulty=difficulty.strip(),
+        source=p.get("source", ""), author=p.get("author", ""),
     )
 
 
@@ -1078,6 +1100,16 @@ def render_problem_detail():
         st.markdown(f"**限制**: {data.get('constraints', '')}")
         if data.get("hint"):
             st.markdown(f"**提示**: {data['hint']}")
+        # 标签与难度（AI 命题生成，展示帮助区分知识点/难度）
+        tags = data.get("tags") or []
+        difficulty = data.get("difficulty") or ""
+        meta_bits = []
+        if tags:
+            meta_bits.append("标签: " + "、".join(tags))
+        if difficulty:
+            meta_bits.append("难度: " + str(difficulty))
+        if meta_bits:
+            st.markdown(" | ".join(meta_bits))
         col1, col2 = st.columns(2)
         with col1:
             st.write(f"时间限制: {data.get('time_limit', 3.0)}s")
