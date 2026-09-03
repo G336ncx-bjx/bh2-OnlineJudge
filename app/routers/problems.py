@@ -92,6 +92,15 @@ async def get_problem_info(request: Request, problem_id: str):
     p = storage.get_problem(problem_id)
     if p is None:
         return err(404, "题目不存在")
+    # 补全可选字段默认值（api.md：默认字段需返回本类型默认值，str->""、list->[]）
+    p.setdefault("hint", "")
+    p.setdefault("source", "")
+    p.setdefault("tags", [])
+    p.setdefault("time_limit", 3.0)
+    p.setdefault("memory_limit", 128)
+    p.setdefault("author", "")
+    p.setdefault("difficulty", "")
+    p.setdefault("public_cases", False)
     return ok(p)
 
 

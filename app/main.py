@@ -34,7 +34,7 @@ async def _validation_exception_handler(request: Request, exc: RequestValidation
         else:
             msg = e.get("msg", "")
             msgs.append(f"字段「{field}」校验失败: {msg}")
-    return JSONResponse(status_code=422, content={"code": 422, "msg": "；".join(msgs), "data": None})
+    return JSONResponse(status_code=400, content={"code": 400, "msg": "；".join(msgs), "data": None})
 
 # Session 中间件
 app.add_middleware(SessionMiddleware, secret_key=config.SESSION_SECRET_KEY)
