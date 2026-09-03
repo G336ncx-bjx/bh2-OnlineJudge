@@ -123,10 +123,15 @@ async def run_command(
         monitor.cancel()
         if timed_out:
             _kill(proc)
-        # 确保进程被回收
+        # 确保进程被回收：不能用无界 await proc.wait()——
+        # 在 Windows Proactor 事件循环下，communicate() 被 wait_for 取消后
+        # 其内部未完成的 wait future 可能残留，导致后续 proc.wait() 永久挂起，
+        # 进而卡死整个串行评测队列。改用有界等待 + 兜底强杀。
         if proc.returncode is None:
             try:
-                await proc.wait()
+                await asyncio.wait_for(proc.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                _kill(proc)
             except Exception:
                 pass
 
