@@ -231,6 +231,9 @@ async def _generate_testcases(task: dict, problem: dict) -> Optional[list]:
 
     把题目主体序列化成精简 JSON 作为上下文传给模型，让模型只输出测试点，
     避免「整题+测试点」一次性输出过长导致被 max_tokens 截断。
+
+    并发下模型偶发返回超长输出被截断、导致 JSON 解析失败，故失败时重试一次
+    （重试时把测试点数量要求写进 prompt，引导模型输出更精简）。
     """
     summary = {
         "title": problem.get("title", ""),
@@ -242,19 +245,21 @@ async def _generate_testcases(task: dict, problem: dict) -> Optional[list]:
     }
     problem_text = json.dumps(summary, ensure_ascii=False, indent=2)
 
-    content, usage = await llm.call_llm([
-        {"role": "system", "content": TESTCASE_PROMPT.format(problem=problem_text)},
-        {"role": "user", "content": "请为上述题目生成测试点。"},
-    ])
-    _accumulate_usage(task, usage)
+    user_hint = "请为上述题目生成测试点。"
+    for attempt in range(2):
+        content, usage = await llm.call_llm([
+            {"role": "system", "content": TESTCASE_PROMPT.format(problem=problem_text)},
+            {"role": "user", "content": user_hint},
+        ])
+        _accumulate_usage(task, usage)
 
-    parsed = llm.parse_problem_json(content)
-    if not parsed or not isinstance(parsed.get("testcases"), list):
-        return None
-    testcases = parsed["testcases"]
-    if not testcases:
-        return None
-    return testcases
+        parsed = llm.parse_problem_json(content)
+        if parsed and isinstance(parsed.get("testcases"), list) and parsed["testcases"]:
+            return parsed["testcases"]
+        # 重试：明确要求精简输出，降低再次被截断的概率
+        user_hint = "请为上述题目生成测试点。注意：只需输出测试点列表，务必精简，每个测试点的 input/output 尽量简短。"
+
+    return None
 
 
 def _normalize_problem(problem: dict) -> Optional[dict]:

@@ -2,6 +2,7 @@
 
 配置通过 OpenAI 兼容的 chat completions 接口调用任意模型提供商。
 """
+import asyncio
 import json
 from typing import Any, Optional
 
@@ -45,6 +46,11 @@ async def call_llm(
 
     usage 形如 {"input_tokens": int, "output_tokens": int, "total_tokens": int}
     模型接口不提供用量时返回空 dict。
+
+    timeout 同时作为 httpx 内部超时与外层 asyncio.wait_for 的硬截止时间。
+    之所以加外层 wait_for：DeepSeek 等 provider 在并发下可能采用流式响应，
+    一旦响应读到一半挂起，httpx 的读超时会在每次收到数据块时被重置而失效，
+    导致协程永久挂起。外层 wait_for 提供不依赖底层行为的强制兜底。
     """
     cfg = get_model_config_raw()
     provider_url = cfg.get("provider_url", "")
@@ -70,10 +76,14 @@ async def call_llm(
         "max_tokens": max_tokens,
     }
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.post(url, json=payload, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
+    async def _post() -> dict:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
+
+    # 外层硬超时兜底：即使 httpx 内部超时被流式响应重置，也强制在 timeout 内返回
+    data = await asyncio.wait_for(_post(), timeout=timeout)
 
     content = data["choices"][0]["message"]["content"]
 
