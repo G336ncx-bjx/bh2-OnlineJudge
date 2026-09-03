@@ -5,7 +5,6 @@ from .. import storage
 from ..deps import get_current_user, is_admin, check_rate_limit
 from ..models import SubmissionCreate
 from ..schemas import ok, err
-from ..judge import queue
 from ..judge.queue import enqueue
 
 router = APIRouter(prefix="/api/submissions", tags=["submissions"])
@@ -198,10 +197,6 @@ async def get_submission_log(request: Request, submission_id: str):
     })
 
     details = s.get("details")
-    # 非管理员且非本人，仅 public_cases 可见 details
-    if not is_admin_user and not is_owner:
-        # 公开时也可见，但按文档 details 用户可见需 public_cases
-        pass
 
     if details is None:
         return ok({"details": [], "score": s.get("score"), "counts": s.get("counts")})

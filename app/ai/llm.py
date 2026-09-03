@@ -4,7 +4,7 @@
 """
 import asyncio
 import json
-from typing import Any, Optional
+from typing import Optional
 
 import httpx
 
@@ -40,18 +40,22 @@ async def call_llm(
     messages: list[dict],
     temperature: float = 0.7,
     max_tokens: int = 16384,
-    timeout: float = 120.0,
+    timeout: float = None,
 ) -> tuple[str, dict]:
     """调用模型，返回 (content, usage)。
 
     usage 形如 {"input_tokens": int, "output_tokens": int, "total_tokens": int}
     模型接口不提供用量时返回空 dict。
 
-    timeout 同时作为 httpx 内部超时与外层 asyncio.wait_for 的硬截止时间。
+    timeout 同时作为 httpx 内部超时与外层 asyncio.wait_for 的硬截止时间；
+    默认取 config.AI_LLM_TIMEOUT（命题生成耗时较长，放宽到 10 分钟）。
     之所以加外层 wait_for：DeepSeek 等 provider 在并发下可能采用流式响应，
     一旦响应读到一半挂起，httpx 的读超时会在每次收到数据块时被重置而失效，
     导致协程永久挂起。外层 wait_for 提供不依赖底层行为的强制兜底。
     """
+    if timeout is None:
+        timeout = config.AI_LLM_TIMEOUT
+
     cfg = get_model_config_raw()
     provider_url = cfg.get("provider_url", "")
     model = cfg.get("model", "")

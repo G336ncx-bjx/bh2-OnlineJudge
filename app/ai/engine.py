@@ -39,11 +39,13 @@ SYSTEM_PROMPT = """你是一名资深的 OJ（在线评测）出题人。请根�
 4. 只输出上述字段，不要包含 testcases（测试点会另行生成）。
 """
 
-# 命题系统提示词（阶段二）：只生成测试点
+# 命题系统提示词（阶段二）：只生成测试点（分批，每次指定数量，降低单次输出长度）
 TESTCASE_PROMPT = """你是 OJ 测试点设计专家。下面是一道已设计好的编程题，请为它生成测试用例（testcases）。
 
 题目信息：
 {problem}
+
+{quantity_hint}
 
 你必须输出一个合法的 JSON 对象，不要包含任何额外文字，字段如下：
 {{
@@ -51,11 +53,11 @@ TESTCASE_PROMPT = """你是 OJ 测试点设计专家。下面是一道已设计�
 }}
 
 要求：
-1. 测试用例必须覆盖边界条件：最小规模、最大规模、普通情况、特殊情况（如空输入、负数、极值、单元素等）。
-2. 至少 5 个测试点，且要能卡掉常见的错误解法（如暴力算法、错误的贪心）。
-3. 每个测试点的 input 必须是完整、可直接运行的输入（不允许省略、不允许写「略」或占位符）。
-4. 每个测试点的 output 必须是与 input 严格对应的正确输出。
-5. 输入输出格式必须严格符合题目的 input_description / output_description。
+1. 本次只需生成指定数量的测试点，不要贪多，务必精简，每个测试点的 input/output 尽量简短。
+2. 每个测试点的 input 必须是完整、可直接运行的输入（不允许省略、不允许写「略」或占位符）。
+3. 每个测试点的 output 必须是与 input 严格对应的正确输出。
+4. 输入输出格式必须严格符合题目的 input_description / output_description。
+5. {coverage}
 """
 
 
@@ -220,21 +222,33 @@ async def run_problem_task(task_id: str) -> None:
         _save_task(task)
         raise
     except Exception as e:
+        # 注意：asyncio.TimeoutError 的 str() 为空串，直接 f"{e}" 会导致 error_info 空白，
+        # 故用 type(e).__name__ 兜底，并单独识别超时给出可读提示。
+        name = type(e).__name__
+        if name == "TimeoutError":
+            hint = "模型响应超时，请稍后重试或降低题目复杂度"
+        else:
+            hint = str(e) or name
         task["status"] = "failed"
-        task["progress"] = f"命题失败: {type(e).__name__}"
-        task["error_info"] = f"命题出错: {e}"
+        task["progress"] = f"命题失败: {name}"
+        task["error_info"] = f"命题出错: {hint}"
         _save_task(task)
 
 
 async def _generate_testcases(task: dict, problem: dict) -> Optional[list]:
-    """阶段二：单独调用模型为题目生成测试点，返回 testcases 列表（失败返回 None）。
+    """阶段二：分批调用模型为题目生成测试点，返回 testcases 列表（失败返回 None）。
 
     把题目主体序列化成精简 JSON 作为上下文传给模型，让模型只输出测试点，
-    避免「整题+测试点」一次性输出过长导致被 max_tokens 截断。
+    避免「整题+测试点」一次性输出过长导致被 max_tokens 截断或触发硬超时。
 
-    并发下模型偶发返回超长输出被截断、导致 JSON 解析失败，故失败时重试一次
-    （重试时把测试点数量要求写进 prompt，引导模型输出更精简）。
+    分批生成：每次只让模型生成少量测试点（BATCH_SIZE 个），循环凑够至少
+    MIN_CASES 个。这样单次输出短、耗时短、进度可见；单批失败可重试而不整体失败，
+    从根本上降低「复杂题生成测试点超时」的概率。
     """
+    MIN_CASES = 5      # 至少生成 5 个测试点
+    BATCH_SIZE = 3     # 每批生成 3 个（首尾各补一点冗余以覆盖边界）
+    MAX_BATCHES = 4    # 最多 4 批（兜底，防止无限循环）
+
     summary = {
         "title": problem.get("title", ""),
         "description": problem.get("description", ""),
@@ -245,21 +259,54 @@ async def _generate_testcases(task: dict, problem: dict) -> Optional[list]:
     }
     problem_text = json.dumps(summary, ensure_ascii=False, indent=2)
 
-    user_hint = "请为上述题目生成测试点。"
-    for attempt in range(2):
-        content, usage = await llm.call_llm([
-            {"role": "system", "content": TESTCASE_PROMPT.format(problem=problem_text)},
-            {"role": "user", "content": user_hint},
-        ])
-        _accumulate_usage(task, usage)
+    # 按批次分配不同的覆盖侧重，保证整体覆盖边界/普通/特殊情况
+    coverage_plan = [
+        "重点覆盖普通情况与最小规模的边界情况。",
+        "重点覆盖最大规模、极值与特殊输入（如空输入、负数、单元素等）。",
+        "补充能卡掉常见错误解法（暴力、错误贪心等）的用例。",
+        "继续补充遗漏的边界与特殊用例。",
+    ]
 
-        parsed = llm.parse_problem_json(content)
-        if parsed and isinstance(parsed.get("testcases"), list) and parsed["testcases"]:
-            return parsed["testcases"]
-        # 重试：明确要求精简输出，降低再次被截断的概率
-        user_hint = "请为上述题目生成测试点。注意：只需输出测试点列表，务必精简，每个测试点的 input/output 尽量简短。"
+    collected: list = []
+    for batch_idx in range(MAX_BATCHES):
+        if len(collected) >= MIN_CASES:
+            break
 
-    return None
+        remaining = MIN_CASES - len(collected)
+        want = min(BATCH_SIZE, remaining)
+        coverage = coverage_plan[batch_idx % len(coverage_plan)]
+        quantity_hint = f"本次请生成 {want} 个测试点。"
+        system = TESTCASE_PROMPT.format(
+            problem=problem_text, quantity_hint=quantity_hint, coverage=coverage
+        )
+
+        # 单批失败重试一次（引导更精简输出）
+        parsed = None
+        user_hint = f"请为上述题目生成 {want} 个测试点。"
+        for attempt in range(2):
+            content, usage = await llm.call_llm([
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_hint},
+            ])
+            _accumulate_usage(task, usage)
+
+            parsed = llm.parse_problem_json(content)
+            if parsed and isinstance(parsed.get("testcases"), list) and parsed["testcases"]:
+                break
+            user_hint = (
+                f"请为上述题目生成 {want} 个测试点。注意：只需输出 testcases 列表，"
+                "务必精简，每个测试点的 input/output 尽量简短。"
+            )
+
+        if not parsed or not isinstance(parsed.get("testcases"), list):
+            # 本批两次都失败：若已有部分测试点则返回已收集的，否则继续下一批
+            continue
+
+        for tc in parsed["testcases"]:
+            if isinstance(tc, dict) and "input" in tc and "output" in tc:
+                collected.append(tc)
+
+    return collected if collected else None
 
 
 def _normalize_problem(problem: dict) -> Optional[dict]:

@@ -32,11 +32,6 @@ def get_current_user(request: Request) -> Optional[dict]:
     return user
 
 
-def require_login(request: Request) -> Optional[dict]:
-    """要求登录。未登录返回 None，调用方据此返回 401。"""
-    return get_current_user(request)
-
-
 def is_admin(user: Optional[dict]) -> bool:
     return bool(user and user.get("role") == "admin")
 

@@ -39,6 +39,10 @@ RATE_LIMIT_MAX = 3          # 次
 # 每个测试点分值
 TESTCASE_SCORE = 10
 
+# AI 命题 LLM 调用硬超时（秒）：生成题目+测试点耗时较长且不可控，
+# 固定太短会误杀正常但慢速的生成，这里放宽到 10 分钟兜底。
+AI_LLM_TIMEOUT = 600.0
+
 
 def ensure_dirs() -> None:
     """确保数据目录存在。"""

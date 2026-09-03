@@ -14,6 +14,9 @@ from streamlit_javascript import st_javascript
 # 后端地址
 BACKEND = "http://127.0.0.1:8000"
 
+# 复用 HTTP 连接（避免每次请求重新握手，降低前端卡顿）
+_session = requests.Session()
+
 st.set_page_config(page_title="OJ 在线评测系统", page_icon="⚖️", layout="wide")
 
 # 用户角色中文映射（内部仍用英文枚举值，仅展示层翻译）
@@ -36,13 +39,13 @@ def api_call(method: str, path: str, data: dict = None, use_session: bool = True
     cookies = {"session": st.session_state.get("session_cookie")} if use_session else {}
     try:
         if method == "GET":
-            resp = requests.get(url, params=data, cookies=cookies)
+            resp = _session.get(url, params=data, cookies=cookies)
         elif method == "POST":
-            resp = requests.post(url, json=data, cookies=cookies)
+            resp = _session.post(url, json=data, cookies=cookies)
         elif method == "PUT":
-            resp = requests.put(url, json=data, cookies=cookies)
+            resp = _session.put(url, json=data, cookies=cookies)
         elif method == "DELETE":
-            resp = requests.delete(url, cookies=cookies)
+            resp = _session.delete(url, cookies=cookies)
         else:
             return None, None, "不支持的请求方法"
         # 保存 session cookie；logout 会返回 session=null 清空 cookie，此时应清除登录态
@@ -1161,7 +1164,6 @@ def render_submission():
                 {"problem_id": pid, "language": lang, "code": code_text},
             )
             if code == 200:
-                st.session_state["last_submission_id"] = data["submission_id"]
                 st.session_state["view_submission_id"] = data["submission_id"]
                 st.session_state.pop("show_submission_list", None)
                 st.session_state.pop("submit_preselect_pid", None)
@@ -1297,6 +1299,8 @@ def render_submission_detail():
     sid = st.session_state.get("view_submission_id")
     if not sid:
         return
+    # 防御性清理：确保详情页独占渲染，不叠加评测列表
+    st.session_state.pop("show_submission_list", None)
 
     code, data, msg = api_call("GET", f"/api/submissions/{sid}")
     if code != 200:
@@ -1309,10 +1313,25 @@ def render_submission_detail():
 
     # 友好标题：优先题目名，其次题目 id，避免直接暴露裸 submission_id 哈希
     title = data.get("problem_title") or data.get("problem_id") or sid
-    st.markdown(
-        f"<div class=\"oj-detail-head\">提交详情<span class=\"oj-detail-title\">{title}</span></div>",
-        unsafe_allow_html=True,
-    )
+    # 标题行：左侧标题 + 右侧操作按钮（返回提交记录 / 提交新评测），垂直居中等高
+    head_l, head_r = st.columns([3, 2], vertical_alignment="center")
+    with head_l:
+        st.markdown(
+            f"<div class=\"oj-detail-head\">提交详情<span class=\"oj-detail-title\">{title}</span></div>",
+            unsafe_allow_html=True,
+        )
+    with head_r:
+        b1, b2 = st.columns(2, gap="small", vertical_alignment="center")
+        with b1:
+            if st.button("← 返回提交记录", key="sub_detail_back", use_container_width=True):
+                st.session_state.pop("view_submission_id", None)
+                st.session_state["show_submission_list"] = True
+                st.rerun()
+        with b2:
+            if st.button("✏️ 提交新评测", key="sub_detail_new_submit", use_container_width=True):
+                st.session_state.pop("view_submission_id", None)
+                st.session_state.pop("show_submission_list", None)
+                st.rerun()
 
     # 元信息卡片：提交编号 / 提交者 / 语言 / 提交时间
     meta_items = [
@@ -1330,20 +1349,6 @@ def render_submission_detail():
 
     status = data.get("status")
     status_zh = {"pending": "评测中", "success": "评测完成", "error": "评测出错"}
-
-    # 顶部操作栏：无论评测是否结束都渲染，保证评测进行中也能离开本页
-    # （返回提交记录 / 继续提交新评测），避免「评测未结束就被锁死在详情页」。
-    back_l, back_r = st.columns(2, gap="small")
-    with back_l:
-        if st.button("← 返回提交记录", key="sub_detail_back", use_container_width=True):
-            st.session_state.pop("view_submission_id", None)
-            st.session_state["show_submission_list"] = True
-            st.rerun()
-    with back_r:
-        if st.button("✏️ 提交新评测", key="sub_detail_new_submit", use_container_width=True):
-            st.session_state.pop("view_submission_id", None)
-            st.session_state.pop("show_submission_list", None)
-            st.rerun()
 
     if status == "pending":
         # 轮询：间隔刷新直到评测结束
@@ -1701,6 +1706,8 @@ def render_ai_task_detail():
             st.session_state["ai_view"] = "create"
             st.rerun()
         return
+    # 防御性清理：确保详情页独占渲染，不叠加历史任务列表
+    st.session_state["ai_view"] = "detail"
 
     # 顶部：返回按钮 + 任务标题
     head_l, head_r = st.columns([3, 1], vertical_alignment="center")
