@@ -25,6 +25,7 @@ ROLE_ZH = {
 # 审计日志操作中文映射
 LOG_ACTION_ZH = {
     "view_logs": "查看评测日志",
+    "view_log": "查看评测日志",  # 兼容历史数据（旧版写入的无 s）
 }
 
 
