@@ -182,7 +182,7 @@ async def get_submission_log(request: Request, submission_id: str):
         storage.append_audit_log({
             "user_id": user["user_id"],
             "problem_id": s.get("problem_id", ""),
-            "action": "view_log",
+            "action": "view_logs",
             "time": storage.now_str(),
             "status": 403,
         })
@@ -192,7 +192,7 @@ async def get_submission_log(request: Request, submission_id: str):
     storage.append_audit_log({
         "user_id": user["user_id"],
         "problem_id": s.get("problem_id", ""),
-        "action": "view_log",
+        "action": "view_logs",
         "time": storage.now_str(),
         "status": 200,
     })

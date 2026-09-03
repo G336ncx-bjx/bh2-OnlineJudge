@@ -417,7 +417,7 @@ def _parse_command(cmd: str) -> list[str]:
   <tr><td>频率限制</td><td>1 分钟内提交 ≥ 3 次</td><td>429 too many requests</td><td class="ok">通过</td></tr>
   <tr><td>重新评测</td><td>admin PUT rejudge</td><td>状态回 pending，旧日志覆盖</td><td class="ok">通过</td></tr>
   <tr><td>可见性配置</td><td>PUT public_cases=true</td><td>普通用户也能查日志</td><td class="ok">通过</td></tr>
-  <tr><td>审计日志</td><td>GET /api/logs/access/</td><td>仅管理员，记录 view_log 访问</td><td class="ok">通过</td></tr>
+  <tr><td>审计日志</td><td>GET /api/logs/access/</td><td>仅管理员，记录 view_logs 访问</td><td class="ok">通过</td></tr>
   <tr><td>AI 命题</td><td>真实 DeepSeek 出题</td><td>完整题目 JSON + 5 测试点，费用 ¥0.223</td><td class="ok">通过</td></tr>
   <tr><td>AI 中断</td><td>运行中 cancel</td><td>立即 cancelled，interrupted=true</td><td class="ok">通过</td></tr>
   <tr><td>AI 中断边界</td><td>已完成任务 cancel</td><td>409 拒绝（边界正确）</td><td class="ok">通过</td></tr>
