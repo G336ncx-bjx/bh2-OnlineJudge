@@ -94,6 +94,47 @@ def delete_problem(problem_id: str) -> None:
         os.remove(path)
 
 
+def delete_submissions_of_problem(problem_id: str) -> None:
+    """级联删除某题目的所有提交记录文件（题目删除时调用）。"""
+    if not os.path.isdir(config.SUBMISSIONS_DIR):
+        return
+    for sid in list_submission_ids():
+        s = get_submission(sid)
+        if s is not None and s.get("problem_id") == problem_id:
+            path = os.path.join(config.SUBMISSIONS_DIR, f"{sid}.json")
+            _read_cache.pop(path, None)
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+
+
+def remove_audit_logs_of_problem(problem_id: str) -> None:
+    """从审计日志中移除某题目的所有访问记录（题目删除时调用）。"""
+    with _lock:
+        logs = _read_json(config.AUDIT_LOGS_FILE, [])
+        kept = [e for e in logs if e.get("problem_id") != problem_id]
+        if len(kept) != len(logs):
+            _write_json(config.AUDIT_LOGS_FILE, kept)
+
+
+def remove_problem_from_users_resolved(problem_id: str) -> None:
+    """从所有用户的「已通过题目」集合中移除该题。
+
+    注意：resolve_count 不递减（保留用户的历史通过贡献），
+    仅移除集合条目，防止同 id 题目重建后误判为「已通过」。
+    """
+    users = get_users()
+    changed = False
+    for u in users.values():
+        resolved = u.get("resolved_problems")
+        if isinstance(resolved, list) and problem_id in resolved:
+            u["resolved_problems"] = [p for p in resolved if p != problem_id]
+            changed = True
+    if changed:
+        save_users(users)
+
+
 # ---------------------------------------------------------------- 语言
 def get_languages() -> dict:
     """返回 {name: config}。"""
