@@ -174,8 +174,8 @@
   <div class="info">
     <div><strong>作业模块：</strong>基础模块 Step 1–6（30 分）+ 进阶模块 AI 智能命题（10 分）</div>
     <div><strong>技术栈：</strong>FastAPI（异步） + Streamlit + JSON 文件存储 + subprocess/psutil 评测 + DeepSeek 大模型</div>
-    <div><strong>代码规模：</strong>后端 17 个模块 2451 行 + 前端 1899 行 = 4350 行</div>
-    <div><strong>git 提交：</strong>79 次 Conventional Commits 规范提交</div>
+    <div><strong>代码规模：</strong>后端 17 个模块 2535 行 + 前端 1899 行 = 4434 行</div>
+    <div><strong>git 提交：</strong>82 次 Conventional Commits 规范提交</div>
   </div>
   <div style="margin-top: 50pt; color: #888; font-size: 10pt;">
     报告生成于 2026 年 9 月
@@ -210,7 +210,7 @@
 
 <p><strong>前端层（Streamlit，<code>frontend/app.py</code>，1899 行）</strong>：通过 <code>requests</code> 库调用后端 REST API，不直接访问数据。包含用户、题目、评测提交、AI 命题四组页面，所有受保护操作均通过 Session Cookie 保持登录态，刷新页面通过 localStorage 恢复会话。</p>
 
-<p><strong>后端层（FastAPI，<code>app/</code>，2451 行，30+ 个异步接口）</strong>：</p>
+<p><strong>后端层（FastAPI，<code>app/</code>，2535 行，30+ 个异步接口）</strong>：</p>
 <div class="grid">
   <div class="card">
     <h4>路由层 <code>app/routers/</code></h4>
@@ -249,8 +249,8 @@
 <p>六大模块对应六个 <code>routers/</code> 子模块，文件归属严格对应：</p>
 <table>
   <tr><th>评分模块</th><th>对应文件</th><th>关键接口</th><th>分值</th></tr>
-  <tr><td>Step 1 题目管理</td><td><code>app/routers/problems.py</code>（163 行）</td><td>GET/POST/PUT/DELETE <code>/api/problems/</code></td><td>5</td></tr>
-  <tr><td>Step 2 评测控制</td><td><code>app/judge/</code>（443 行） + <code>routers/languages.py</code>（43 行）</td><td>POST <code>/api/submissions/</code>、<code>/api/languages/</code></td><td>5</td></tr>
+  <tr><td>Step 1 题目管理</td><td><code>app/routers/problems.py</code>（168 行）</td><td>GET/POST/PUT/DELETE <code>/api/problems/</code></td><td>5</td></tr>
+  <tr><td>Step 2 评测控制</td><td><code>app/judge/</code>（480 行） + <code>routers/languages.py</code>（43 行）</td><td>POST <code>/api/submissions/</code>、<code>/api/languages/</code></td><td>5</td></tr>
   <tr><td>Step 3 评测管理</td><td><code>app/routers/submissions.py</code>（235 行）</td><td>GET 列表/详情、PUT rejudge</td><td>5</td></tr>
   <tr><td>Step 4 用户管理</td><td><code>app/routers/users.py</code>（235 行）</td><td>注册/登录/登出、PUT 角色</td><td>5</td></tr>
   <tr><td>Step 5 评测日志</td><td><code>app/routers/logs.py</code>（43 行）</td><td>GET 日志、PUT 可见性、GET 审计</td><td>5</td></tr>
@@ -310,7 +310,7 @@ def _parse_command(cmd: str) -> list[str]:
 <ul>
   <li><code>get_current_user(request)</code>：从 session 取 <code>user_id</code>，查 users 字典返回用户对象。</li>
   <li><code>is_admin(user)</code>：判断 <code>role == "admin"</code>。</li>
-  <li><code>check_rate_limit(user_id)</code>：1 分钟内提交次数 ≥ 3 则返回 False（触发 429）。</li>
+  <li><code>check_rate_limit(user_id, problem_id)</code>：<strong>单人单题</strong>维度限流，同一用户对同一题目 1 分钟内提交 ≥ 3 次则返回 False（触发 429），不同题目互不影响；管理员免限流。</li>
 </ul>
 <p>每个路由显式调用这些依赖，避免遗漏：</p>
 <pre><code>async def create_problem(request: Request, problem: ProblemCreate):
@@ -403,6 +403,21 @@ def _parse_command(cmd: str) -> list[str]:
     _poll_pending()</code></pre>
 <p>评测详情与 AI 命题详情两处轮询均按此重构。实测 pending 详情只显示「评测中」提示不再叠列表，评测完成后自动切换到 success 详情（测试点明细正常）。</p>
 
+<h3>2.10 统计口径与数据一致性（按验收反馈修正）</h3>
+<p>验收前按老师同步的口径核查，发现三处统计/清理语义与预期不符，逐一修正：</p>
+
+<div class="box warn">
+  <strong>修正一：通过数「一个题目贡献一次」。</strong>原实现每次满分提交都 <code>resolve_count += 1</code>，同一用户对同一题重复 AC 会重复计数。改为用户数据新增 <code>resolved_problems</code> 集合：题目首次满分时才 +1，重复 AC 不重复计数。同时做了<strong>旧数据惰性重建</strong>——老用户首次评测时自动扫描其历史提交，把旧的重复计数修正为「一题一次」的准确值（实测重建结果与独立扫描完全一致）。rejudge 分数回退不回退计数，保持「曾经 AC 即通过」语义。
+</div>
+
+<div class="box warn">
+  <strong>修正二：删除题目级联清理。</strong>原实现只删题目 JSON，该题的提交记录与审计日志残留。改为级联删除：题目 JSON + 该题全部提交文件 + <code>audit_logs.json</code> 中该题记录一并清除，并从用户 <code>resolved_problems</code> 集合移除该题（<code>resolve_count</code> 保留历史贡献不递减）。边界处理：评测 worker 在评测前后双重检查题目存在性，<strong>评测进行中删除题目时丢弃残留任务</strong>，避免评测结果在级联删除后重新写回文件（实测无残留）。
+</div>
+
+<div class="box tip">
+  <strong>修正三：提交频率限制改为「单人单题」。</strong>原实现按用户全局计数（1 分钟所有题合计 3 次），改为按 <code>(user_id, problem_id)</code> 维度分别计数：同一用户对同一题 1 分钟最多 3 次，换题不受影响。实测同题第 4 次 429、换题 200、管理员仍免限。
+</div>
+
 <!-- ============================== 3. 成果展示 ============================== -->
 <h2>3. 成果展示</h2>
 
@@ -425,12 +440,14 @@ def _parse_command(cmd: str) -> list[str]:
   <tr><td>权限：未登录</td><td>GET /api/problems/</td><td>401 not logged in</td><td class="ok">通过</td></tr>
   <tr><td>权限：非管理员</td><td>普通用户删除题目</td><td>403 permission denied</td><td class="ok">通过</td></tr>
   <tr><td>权限：banned</td><td>被封禁用户登录</td><td>403 banned</td><td class="ok">通过</td></tr>
-  <tr><td>频率限制</td><td>1 分钟内提交 ≥ 3 次</td><td>429 too many requests</td><td class="ok">通过</td></tr>
+  <tr><td>频率限制</td><td>同题 1 分钟内提交 ≥ 3 次</td><td>429（单人单题，换题不受影响）</td><td class="ok">通过</td></tr>
   <tr><td>重新评测</td><td>admin PUT rejudge</td><td>状态回 pending，旧日志覆盖</td><td class="ok">通过</td></tr>
   <tr><td>可见性配置</td><td>PUT public_cases=true</td><td>普通用户也能查日志</td><td class="ok">通过</td></tr>
   <tr><td>审计日志</td><td>GET /api/logs/access/</td><td>仅管理员，记录 view_logs 访问</td><td class="ok">通过</td></tr>
   <tr><td>性能优化</td><td>评测列表接口</td><td>1.6s → 0.04s（mtime 缓存）</td><td class="ok">通过</td></tr>
   <tr><td>pending 详情</td><td>评测中从列表点进详情</td><td>不再叠列表（st.fragment 轮询）</td><td class="ok">通过</td></tr>
+  <tr><td>通过数统计</td><td>同题重复 AC</td><td>resolve_count 只计一次（含历史重建）</td><td class="ok">通过</td></tr>
+  <tr><td>删除题目</td><td>级联清理</td><td>该题提交与审计日志一并删除，评测中任务丢弃</td><td class="ok">通过</td></tr>
   <tr><td>AI 命题</td><td>真实 DeepSeek 出题</td><td>完整题目 JSON + 5 测试点，费用 ¥0.223</td><td class="ok">通过</td></tr>
   <tr><td>AI 中断</td><td>运行中 cancel</td><td>立即 cancelled，interrupted=true</td><td class="ok">通过</td></tr>
   <tr><td>AI 中断边界</td><td>已完成任务 cancel</td><td>409 拒绝（边界正确）</td><td class="ok">通过</td></tr>
@@ -502,7 +519,7 @@ def _parse_command(cmd: str) -> list[str]:
   <tr><td>基础模块实现（Step 1–6）</td><td>约 4 小时</td><td>脚手架 + 6 个模块的代码与端到端测试</td></tr>
   <tr><td>AI 智能命题模块</td><td>约 3 小时</td><td>模型调用、任务状态机、分阶段生成、Token 计费、真实出题与中断验证</td></tr>
   <tr><td>前端交互与体验打磨</td><td>约 2 小时</td><td>三组页面美化、会话持久化、分页、AI 配置弹窗与历史列表</td></tr>
-  <tr><td>持续提交与推送</td><td>约 1 小时</td><td>79 次 Conventional Commits + push</td></tr>
+  <tr><td>持续提交与推送</td><td>约 1 小时</td><td>82 次 Conventional Commits + push</td></tr>
   <tr><td>报告与配图</td><td>约 1 小时</td><td>本文档 + 3 张配图</td></tr>
   <tr><th>总计</th><th>约 12.5 小时</th><th>—</th></tr>
 </table>

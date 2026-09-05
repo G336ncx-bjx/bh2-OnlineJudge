@@ -77,7 +77,7 @@ def gen_architecture():
 
     # 后端层
     _draw_box(d, (60, 265, W - 60, 470), "", "#59a14f", font_size=22)
-    d.text((100, 285), "FastAPI 后端（全 async def 异步接口，2451 行，30+ 接口）", fill="white", font=_font(20, bold=True))
+    d.text((100, 285), "FastAPI 后端（全 async def 异步接口，2535 行，30+ 接口）", fill="white", font=_font(20, bold=True))
 
     # 路由层
     d.text((100, 330), "路由层 app/routers/", fill="white", font=_font(18, bold=True))
