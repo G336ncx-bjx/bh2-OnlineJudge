@@ -6,8 +6,8 @@ from fastapi import Request
 
 from . import storage
 
-# 记录每个用户最近提交时间，用于频率限制
-_rate_records: dict[str, list[float]] = {}
+# 记录每个「用户+题目」最近提交时间，用于频率限制（单人单题维度）
+_rate_records: dict[tuple[str, str], list[float]] = {}
 
 
 def get_current_user(request: Request) -> Optional[dict]:
@@ -36,10 +36,11 @@ def is_admin(user: Optional[dict]) -> bool:
     return bool(user and user.get("role") == "admin")
 
 
-def check_rate_limit(user_id: str) -> bool:
-    """频率限制：1 分钟内超过 3 次提交返回 False。"""
+def check_rate_limit(user_id: str, problem_id: str) -> bool:
+    """频率限制：同一用户对同一题目 1 分钟内超过 3 次提交返回 False。"""
     now = time.time()
-    records = _rate_records.setdefault(user_id, [])
+    key = (user_id, problem_id)
+    records = _rate_records.setdefault(key, [])
     # 清理 1 分钟前的记录
     records[:] = [t for t in records if now - t < 60]
     if len(records) >= 3:
