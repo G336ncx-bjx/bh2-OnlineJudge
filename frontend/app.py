@@ -1575,6 +1575,12 @@ def _ai_config_dialog():
             "模型名称", value=current.get("model", ""),
             placeholder="gpt-4o-mini",
         )
+        max_tokens = st.number_input(
+            "最大输出 Token", value=int(current.get("max_tokens", 32768)),
+            min_value=1024, step=1024,
+            help="单次模型输出的长度上限。复杂题的题目主体输出较长，默认 32768，"
+                 "如仍被截断可调大（受模型本身最大输出能力限制）。",
+        )
         api_key = st.text_input(
             "模型密钥 (API Key)", type="password",
             placeholder="留空表示不修改（已配置时不会回显）",
@@ -1613,6 +1619,7 @@ def _ai_config_dialog():
                 "output_price": output_price,
                 "price_unit": int(price_unit),
                 "currency": currency_reverse.get(currency, currency),
+                "max_tokens": int(max_tokens),
             })
             if code == 200:
                 st.success("模型配置已更新")

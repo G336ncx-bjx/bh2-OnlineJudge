@@ -43,6 +43,12 @@ TESTCASE_SCORE = 10
 # 固定太短会误杀正常但慢速的生成，这里放宽到 10 分钟兜底。
 AI_LLM_TIMEOUT = 600.0
 
+# AI 命题单次 LLM 调用的默认最大输出 Token 数。
+# 早期设 16384 时，复杂题（如异步编程）题目主体输出仍会被截断导致 JSON 解析失败，
+# 故默认放宽到 32768；用户可在模型配置中自定义覆盖（见 data/ai_model_config.json 的
+# max_tokens 字段）。不设无限上限，避免单次费用与耗时失控。
+AI_MAX_TOKENS = 32768
+
 
 def ensure_dirs() -> None:
     """确保数据目录存在。"""

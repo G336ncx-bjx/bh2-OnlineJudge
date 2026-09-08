@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
-from .. import storage
+from .. import config, storage
 from ..deps import get_current_user, is_admin
 from ..schemas import ok, err
 from ..ai import llm, engine
@@ -20,6 +20,7 @@ class ModelConfigBody(BaseModel):
     output_price: Optional[float] = None
     price_unit: Optional[int] = None
     currency: Optional[str] = None
+    max_tokens: Optional[int] = None
 
 
 class ProblemTaskCreate(BaseModel):
@@ -50,6 +51,8 @@ async def set_model_config(request: Request, body: ModelConfigBody):
         cfg["price_unit"] = body.price_unit
     if body.currency is not None:
         cfg["currency"] = body.currency
+    if body.max_tokens is not None:
+        cfg["max_tokens"] = body.max_tokens
     llm.save_model_config(cfg)
 
     return ok({
@@ -60,6 +63,7 @@ async def set_model_config(request: Request, body: ModelConfigBody):
         "output_price": cfg.get("output_price", 0.0),
         "price_unit": cfg.get("price_unit", 1000000),
         "currency": cfg.get("currency", "USD"),
+        "max_tokens": cfg.get("max_tokens", config.AI_MAX_TOKENS),
     }, "model config updated")
 
 

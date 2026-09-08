@@ -23,6 +23,7 @@ def get_model_config() -> dict:
         "output_price": cfg.get("output_price", 0.0),
         "price_unit": cfg.get("price_unit", 1000000),
         "currency": cfg.get("currency", "USD"),
+        "max_tokens": cfg.get("max_tokens", config.AI_MAX_TOKENS),
     }
 
 
@@ -39,13 +40,17 @@ def save_model_config(cfg: dict) -> None:
 async def call_llm(
     messages: list[dict],
     temperature: float = 0.7,
-    max_tokens: int = 16384,
+    max_tokens: Optional[int] = None,
     timeout: float = None,
 ) -> tuple[str, dict]:
     """调用模型，返回 (content, usage)。
 
     usage 形如 {"input_tokens": int, "output_tokens": int, "total_tokens": int}
     模型接口不提供用量时返回空 dict。
+
+    max_tokens 默认取模型配置中的 max_tokens 字段，未配置则用
+    config.AI_MAX_TOKENS（32768）。复杂题题目主体输出较长，16384 曾被截断
+    导致 JSON 解析失败，故默认放宽；如需更大可在模型配置中自定义。
 
     timeout 同时作为 httpx 内部超时与外层 asyncio.wait_for 的硬截止时间；
     默认取 config.AI_LLM_TIMEOUT（命题生成耗时较长，放宽到 10 分钟）。
@@ -60,6 +65,9 @@ async def call_llm(
     provider_url = cfg.get("provider_url", "")
     model = cfg.get("model", "")
     api_key = cfg.get("api_key", "")
+
+    if max_tokens is None:
+        max_tokens = cfg.get("max_tokens", config.AI_MAX_TOKENS) or config.AI_MAX_TOKENS
 
     if not provider_url or not model:
         raise RuntimeError("模型未配置：请先设置 provider_url 和 model")
