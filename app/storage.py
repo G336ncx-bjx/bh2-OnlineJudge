@@ -119,17 +119,31 @@ def remove_audit_logs_of_problem(problem_id: str) -> None:
 
 
 def remove_problem_from_users_resolved(problem_id: str) -> None:
-    """从所有用户的「已通过题目」集合中移除该题。
+    """删除题目时同步回退用户统计。
 
-    注意：resolve_count 不递减（保留用户的历史通过贡献），
-    仅移除集合条目，防止同 id 题目重建后误判为「已通过」。
+    题目被删除后，该题的历史提交与通过记录一并清除，因此：
+    - submit_count 减去该用户对这道题的提交数；
+    - 若该题在用户「已通过题目」集合中，从集合移除并将 resolve_count 减 1
+      （与「一个题目贡献一次」的口径保持一致）。
     """
     users = get_users()
+    # 统计每个用户对这道题的提交数
+    sub_counts: dict[str, int] = {}
+    for sid in list_submission_ids():
+        s = get_submission(sid)
+        if s is not None and s.get("problem_id") == problem_id:
+            uid = s.get("user_id")
+            if uid:
+                sub_counts[uid] = sub_counts.get(uid, 0) + 1
     changed = False
-    for u in users.values():
+    for uid, u in users.items():
+        if uid in sub_counts:
+            u["submit_count"] = max(0, u.get("submit_count", 0) - sub_counts[uid])
+            changed = True
         resolved = u.get("resolved_problems")
         if isinstance(resolved, list) and problem_id in resolved:
             u["resolved_problems"] = [p for p in resolved if p != problem_id]
+            u["resolve_count"] = max(0, u.get("resolve_count", 0) - 1)
             changed = True
     if changed:
         save_users(users)

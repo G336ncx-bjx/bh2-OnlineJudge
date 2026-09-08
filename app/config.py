@@ -51,7 +51,7 @@ AI_MAX_TOKENS = 32768
 
 # LLM 连接类瞬时故障（SSL 握手失败、连接重置等）自动重试次数与重试间隔（秒）。
 # 这类错误请求未送达模型（不产生费用），重试通常即可成功；业务状态码错误与超时不重试。
-AI_LLM_MAX_RETRIES = 2
+AI_LLM_MAX_RETRIES = 4
 AI_LLM_RETRY_DELAY = 2.0
 
 

@@ -139,12 +139,11 @@ async def delete_problem(request: Request, problem_id: str):
         return err(403, "权限不足")
     if storage.get_problem(problem_id) is None:
         return err(404, "题目不存在")
-    # 级联删除：题目 JSON + 该题全部提交记录 + 该题审计日志
+    # 级联删除：先回退用户统计（需在提交删除前统计），再删题目/提交/审计
+    storage.remove_problem_from_users_resolved(problem_id)
     storage.delete_problem(problem_id)
     storage.delete_submissions_of_problem(problem_id)
     storage.remove_audit_logs_of_problem(problem_id)
-    # 从用户「已通过题目」集合移除该题（resolve_count 保留历史贡献不递减）
-    storage.remove_problem_from_users_resolved(problem_id)
     return ok({"id": problem_id}, "delete success")
 
 

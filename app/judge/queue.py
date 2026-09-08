@@ -16,6 +16,20 @@ def enqueue(submission_id: str) -> None:
     _queue.put_nowait(submission_id)
 
 
+def requeue_stale_pending() -> int:
+    """启动恢复：把磁盘上遗留的 pending 提交重新入队（服务重启后兜底）。
+
+    返回重新入队的数量。
+    """
+    count = 0
+    for sid in storage.list_submission_ids():
+        s = storage.get_submission(sid)
+        if s is not None and s.get("status") == "pending":
+            _queue.put_nowait(sid)
+            count += 1
+    return count
+
+
 async def _worker() -> None:
     """后台评测 worker：串行消费队列（满足单用户任务要求）。"""
     while True:

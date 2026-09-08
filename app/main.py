@@ -63,6 +63,10 @@ async def on_startup():
     ensure_initial_admin()
     _seed_languages()
     queue.start_worker()
+    # 启动恢复：把磁盘上遗留的 pending 提交重新入队（服务重启前中断的评测不丢）
+    requeued = queue.requeue_stale_pending()
+    if requeued:
+        print(f"[startup] requeued {requeued} stale pending submission(s)")
 
 
 @app.on_event("shutdown")

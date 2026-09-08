@@ -94,7 +94,7 @@ async def call_llm(
             resp.raise_for_status()
             return resp.json()
 
-    # 连接类瞬时故障自动重试（如 SSL record layer failure、连接被重置等网络抖动）。
+    # 连接类瞬时故障自动重试（如 SSL 握手/记录层失败、连接被重置等网络抖动）。
     # 这类错误请求未送达模型（不产生费用），重试通常即可成功。
     # 注意：不重试 HTTP 业务状态码错误（HTTPStatusError）与超时（外层 wait_for）。
     last_err: Optional[Exception] = None
@@ -105,9 +105,13 @@ async def call_llm(
             break
         except asyncio.TimeoutError:
             raise
+        except asyncio.CancelledError:
+            raise
         except httpx.HTTPStatusError:
             raise
-        except httpx.HTTPError as e:
+        except (httpx.HTTPError, OSError) as e:
+            # OSError 覆盖 ssl.SSLError（如 DECRYPTION_FAILED_OR_BAD_RECORD_MAC）、
+            # ConnectionResetError 等未经过 httpx 包装直接抛出的系统级网络错误。
             last_err = e
             if attempt >= config.AI_LLM_MAX_RETRIES:
                 raise
