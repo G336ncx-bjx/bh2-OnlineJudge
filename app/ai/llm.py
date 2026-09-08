@@ -94,8 +94,26 @@ async def call_llm(
             resp.raise_for_status()
             return resp.json()
 
-    # 外层硬超时兜底：即使 httpx 内部超时被流式响应重置，也强制在 timeout 内返回
-    data = await asyncio.wait_for(_post(), timeout=timeout)
+    # 连接类瞬时故障自动重试（如 SSL record layer failure、连接被重置等网络抖动）。
+    # 这类错误请求未送达模型（不产生费用），重试通常即可成功。
+    # 注意：不重试 HTTP 业务状态码错误（HTTPStatusError）与超时（外层 wait_for）。
+    last_err: Optional[Exception] = None
+    for attempt in range(config.AI_LLM_MAX_RETRIES + 1):
+        try:
+            # 外层硬超时兜底：即使 httpx 内部超时被流式响应重置，也强制在 timeout 内返回
+            data = await asyncio.wait_for(_post(), timeout=timeout)
+            break
+        except asyncio.TimeoutError:
+            raise
+        except httpx.HTTPStatusError:
+            raise
+        except httpx.HTTPError as e:
+            last_err = e
+            if attempt >= config.AI_LLM_MAX_RETRIES:
+                raise
+            await asyncio.sleep(config.AI_LLM_RETRY_DELAY * (attempt + 1))
+    else:
+        raise last_err
 
     content = data["choices"][0]["message"]["content"]
 
