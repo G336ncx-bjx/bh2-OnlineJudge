@@ -377,10 +377,15 @@ async def _generate_testcases(task: dict, problem: dict, min_cases: int = 8) -> 
         parsed = None
         user_hint = f"请为上述题目生成 {want} 个测试点。"
         for attempt in range(2):
-            content, usage = await llm.call_llm([
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_hint},
-            ])
+            try:
+                content, usage = await llm.call_llm([
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_hint},
+                ])
+            except Exception:
+                # 网络抖动（SSL 记录层失败等）单批失败不整体失败：
+                # 已收集的测试点保留，继续下一批
+                break
             _accumulate_usage(task, usage)
 
             parsed = llm.parse_problem_json(content)
