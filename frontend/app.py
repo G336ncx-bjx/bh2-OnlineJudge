@@ -836,6 +836,30 @@ def _problem_payload(pid, title, description, input_desc, output_desc,
     return payload
 
 
+def _render_big_tc_toggle(pid_key: str, testcases: list) -> None:
+    """在表单外渲染「展开编辑大测试点」开关（表单内控件不即时生效）。
+
+    仅当 testcases 里存在大测试点（>2000 字符）时显示；
+    勾选后 st.rerun()，_problem_form 读取 session_state 展开完整内容。
+    """
+    BIG_TC_THRESHOLD = 2000
+    big_count = sum(
+        1 for tc in (testcases or [])
+        if len(tc.get("input", "")) > BIG_TC_THRESHOLD
+        or len(tc.get("output", "")) > BIG_TC_THRESHOLD
+    )
+    if not big_count:
+        return
+    key = f"expand_big_tc_{pid_key}"
+    st.checkbox(
+        f"展开编辑 {big_count} 个大测试点（内容很大，展开后页面可能变慢）",
+        value=st.session_state.get(key, False),
+        key=key,
+    )
+    if st.session_state.get(key):
+        st.caption("已展开：下方测试点文本框包含完整内容，可直接编辑。")
+
+
 def _problem_form(prefill: dict | None = None, pid_editable: bool = True):
     """题目表单（新增/编辑共用）。返回提交按钮是否被点击。"""
     p = prefill or {}
@@ -855,9 +879,10 @@ def _problem_form(prefill: dict | None = None, pid_editable: bool = True):
         value=json.dumps(p.get("samples", []), ensure_ascii=False, indent=2)
         if p.get("samples") else "",
     )
-    # 大测试点（input/output 超过 BIG_TC_THRESHOLD 字符）只显示摘要而不渲染原文：
-    # 生成器产出的大测试点动辄百万字符，塞进 textarea 会卡死浏览器。
-    # 完整数据保留在 prefill 中，提交时自动带上，不受摘要显示影响。
+    # 大测试点（input/output 超过 BIG_TC_THRESHOLD 字符）默认只显示摘要：
+    # 生成器产出的大测试点动辄百万字符，默认塞进 textarea 会卡死浏览器。
+    # 「展开编辑」开关由调用方渲染在表单外面（表单内控件不即时生效），
+    # 这里只读 session_state 决定是否展开。
     BIG_TC_THRESHOLD = 2000
     testcases = p.get("testcases", []) if p.get("testcases") else []
     big_count = sum(
@@ -865,24 +890,26 @@ def _problem_form(prefill: dict | None = None, pid_editable: bool = True):
         if len(tc.get("input", "")) > BIG_TC_THRESHOLD
         or len(tc.get("output", "")) > BIG_TC_THRESHOLD
     )
-    if big_count:
+    pid_key = p.get("id", "") or "new"
+    full_edit = st.session_state.get(f"expand_big_tc_{pid_key}", False)
+    if big_count and not full_edit:
         summary_lines = []
         for tc in testcases:
             il, ol = len(tc.get("input", "")), len(tc.get("output", ""))
             if il > BIG_TC_THRESHOLD or ol > BIG_TC_THRESHOLD:
                 summary_lines.append(
                     json.dumps(
-                        {"input": f"[大测试点] 输入 {il} 字符（已完整保留，提交时自动带上）",
-                         "output": f"[大测试点] 输出 {ol} 字符（已完整保留，提交时自动带上）"},
+                        {"input": f"[大测试点] 输入 {il} 字符（勾选上方选项可展开编辑）",
+                         "output": f"[大测试点] 输出 {ol} 字符（勾选上方选项可展开编辑）"},
                         ensure_ascii=False)
                 )
             else:
                 summary_lines.append(json.dumps(tc, ensure_ascii=False))
         testcases_display = "[\n  " + ",\n  ".join(summary_lines) + "\n]"
-        st.info(f"本题含 {big_count} 个大规模测试点，为避免页面卡顿仅显示摘要，"
-                f"提交时完整数据会自动包含。")
+        st.info(f"本题含 {big_count} 个大规模测试点，已折叠显示。未展开时提交将保留原测试点；"
+                f"如需修改请勾选上方「展开编辑」。")
         testcases_str = st.text_area(
-            "测试点 (大测试点仅显示摘要)",
+            "测试点 (大测试点折叠中)",
             value=testcases_display,
             height=200,
             disabled=True,
@@ -909,23 +936,17 @@ def _problem_form(prefill: dict | None = None, pid_editable: bool = True):
     submitted = st.form_submit_button("提交", type="primary", use_container_width=True)
     # 标签：逗号分隔字符串 → 列表（去除空项）
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
-    # 大测试点已用摘要占位时，提交直接使用 prefill 的完整 testcases，
-    # 不能解析 textarea 里的占位文本。
-    if big_count:
-        payload = _problem_payload(
-            pid, title, description, input_desc, output_desc, constraints,
-            samples_str, json.dumps(testcases, ensure_ascii=False), hint,
-            time_limit, memory_limit,
-            tags=tag_list, difficulty=difficulty.strip(),
-            source=p.get("source", ""), author=p.get("author", ""),
-        )
-    else:
-        payload = _problem_payload(
-            pid, title, description, input_desc, output_desc, constraints,
-            samples_str, testcases_str, hint, time_limit, memory_limit,
-            tags=tag_list, difficulty=difficulty.strip(),
-            source=p.get("source", ""), author=p.get("author", ""),
-        )
+    # 大测试点折叠未展开时，提交直接使用 prefill 的完整 testcases（textarea 里是摘要占位）；
+    # 展开编辑或无大测试点时，解析 textarea 内容（用户的修改生效）。
+    use_prefill_tc = big_count and not full_edit
+    payload = _problem_payload(
+        pid, title, description, input_desc, output_desc, constraints,
+        samples_str,
+        json.dumps(testcases, ensure_ascii=False) if use_prefill_tc else testcases_str,
+        hint, time_limit, memory_limit,
+        tags=tag_list, difficulty=difficulty.strip(),
+        source=p.get("source", ""), author=p.get("author", ""),
+    )
     return submitted, payload
 
 
@@ -1110,6 +1131,7 @@ def render_problem_edit():
         return
     st.subheader(f"编辑题目: {pid}")
     _render_back_to_list()
+    _render_big_tc_toggle(data.get("id", pid), data.get("testcases"))
     with st.form("edit_problem_form"):
         submitted, payload = _problem_form(prefill=data, pid_editable=False)
     if submitted:
@@ -1883,6 +1905,7 @@ def render_ai_task_detail():
     if status == "completed" and result:
         st.divider()
         st.subheader("生成的题目")
+        _render_big_tc_toggle(result.get("id", "new"), result.get("testcases"))
         with st.form("ai_import_form"):
             submitted, payload = _problem_form(prefill=result, pid_editable=True)
         if submitted:
