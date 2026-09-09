@@ -1413,14 +1413,7 @@ def render_submission_detail():
         )
         st.markdown(f"<div class=\"oj-stat-row\">{stats_html}</div>", unsafe_allow_html=True)
 
-        # 编译失败才提示（测试点明细已含 CE 标签；编译成功不再显示冗余信息，
-        # 也不把编译器原始输出/服务器路径展示给用户）
-        if data.get("compile_info"):
-            ci = data["compile_info"]
-            if ci.get("result") == "failed":
-                st.error("编译失败，测试点判定为 CE")
-                if ci.get("message"):
-                    st.code(ci["message"])
+        # 编译错误/评测错误仅展示服务端异常信息（评测结果均已在测试点表格中）
         if data.get("error_info"):
             st.error(data["error_info"])
 
