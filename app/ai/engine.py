@@ -66,20 +66,21 @@ TESTCASE_PROMPT = """你是 OJ 测试点设计专家。下面是一道已设计�
 # 直接让模型输出大规模测试数据不现实（输出 token 上限），改为让模型写一个
 # 「数据生成器 + 标程」Python 脚本，由服务器本地执行产出大规模输入和标准输出，
 # 从而突破模型输出长度限制，并满足 4 分钟内出题的时间要求。
-GENERATOR_PROMPT = """你是 OJ 测试点生成器设计专家。下面这道题在 constraints 中声明了较大规模的数据，但已生成的测试点规模偏小，需要补充大规模测试点。
+GENERATOR_PROMPT = """你是 OJ 测试点生成器设计专家。下面这道题在 constraints 中声明了较大规模的数据，但已生成的测试点规模偏小，需要补充 {large_cases} 个大规模测试点。
 
 题目信息：
 {problem}
 
 请输出一个 Python 脚本（不要用 markdown 代码块包裹，直接输出纯代码），脚本必须：
-1. 定义函数 generate_input() -> str：返回一个符合 input_description 的**大规模**输入字符串（数据规模逼近 constraints 上限，如 n 取最大值、行数上万等）。
+1. 定义函数 generate_input(seed) -> str：根据随机种子 seed 返回一个符合 input_description 的**大规模**输入字符串（数据规模逼近 constraints 上限，如 n 取最大值、行数上万等）。
 2. 定义函数 solve(data: str) -> str：返回该输入对应的正确输出字符串。solve 使用能通过题目的正确算法（标程），例如数据规模大时用 O(n log n) 或更优的解法。
-3. 在脚本末尾包含：
-   data = generate_input()
-   print("===INPUT===")
-   print(data, end="")
-   print("===OUTPUT===")
-   print(solve(data), end="")
+3. 在脚本末尾用循环生成 {large_cases} 个测试点（每个测试点用不同的 seed），每组的输出格式如下：
+   for seed in range({large_cases}):
+       data = generate_input(seed)
+       print("===CASE " + str(seed + 1) + " INPUT===")
+       print(data, end="")
+       print("===CASE " + str(seed + 1) + " OUTPUT===")
+       print(solve(data), end="")
 4. 脚本只依赖 Python 标准库，不要导入第三方库。
 5. 保证 generate_input 生成的数据满足 constraints 中的全部范围限制。
 6. 保证 solve 的输出格式严格符合 output_description。
@@ -229,7 +230,7 @@ async def run_problem_task(task_id: str) -> None:
         if _needs_large_testcases(problem):
             task["progress"] = "正在生成大规模测试点"
             _save_task(task)
-            large = await _generate_large_testcases(task, problem)
+            large = await _generate_large_testcases(task, problem, large_cases=2)
             if large:
                 problem["testcases"].extend(large)
 
@@ -282,8 +283,8 @@ async def _generate_testcases(task: dict, problem: dict) -> Optional[list]:
     MIN_CASES 个。这样单次输出短、耗时短、进度可见；单批失败可重试而不整体失败，
     从根本上降低「复杂题生成测试点超时」的概率。
     """
-    MIN_CASES = 5      # 至少生成 5 个测试点
-    BATCH_SIZE = 3     # 每批生成 3 个（首尾各补一点冗余以覆盖边界）
+    MIN_CASES = 8      # 至少生成 8 个小规模测试点（+ 2 个大规模 = 常规 10 个）
+    BATCH_SIZE = 4     # 每批生成 4 个
     MAX_BATCHES = 4    # 最多 4 批（兜底，防止无限循环）
 
     summary = {
@@ -380,8 +381,12 @@ def _extract_code(content: str) -> str:
     return text
 
 
-async def _generate_large_testcases(task: dict, problem: dict) -> Optional[list]:
+async def _generate_large_testcases(task: dict, problem: dict,
+                                     large_cases: int = 2) -> Optional[list]:
     """让模型写「生成器+标程」脚本，本地执行产出大规模测试点。
+
+    large_cases: 期望生成的大规模测试点数量（默认 2，与 8 个小测试点
+    凑成常规的 10 个测试点）。
 
     返回 testcases 列表（成功）或 None（失败，不影响整体流程）。
     """
@@ -398,7 +403,8 @@ async def _generate_large_testcases(task: dict, problem: dict) -> Optional[list]
     try:
         content, usage = await llm.call_llm(
             [
-                {"role": "system", "content": GENERATOR_PROMPT.format(problem=problem_text)},
+                {"role": "system", "content": GENERATOR_PROMPT.format(
+                    problem=problem_text, large_cases=large_cases)},
                 {"role": "user", "content": "请输出生成器脚本。"},
             ],
             temperature=0.3,
@@ -423,30 +429,33 @@ async def _generate_large_testcases(task: dict, problem: dict) -> Optional[list]
         res = await run_command(
             ["python", script_path],
             stdin_data="",
-            time_limit=30.0,          # 标程运行 30s 上限
+            time_limit=60.0,          # 多个大测试点 + 标程，放宽到 60s
             memory_limit=512.0,       # 512MB
             cwd=tmp_dir,
         )
         if res.timed_out or res.memory_exceeded or res.returncode != 0:
             return None
         out = res.stdout
-        # 用固定标记切分（不用正则非贪婪，避免输入数据内部的换行干扰匹配）
-        in_marker = "===INPUT==="
-        out_marker = "===OUTPUT==="
-        i_pos = out.find(in_marker)
-        o_pos = out.find(out_marker)
-        if i_pos == -1 or o_pos == -1 or o_pos <= i_pos:
-            return None
-        big_input = out[i_pos + len(in_marker):o_pos]
-        big_output = out[o_pos + len(out_marker):]
-        # 去掉标记后的换行（Windows 下是 \r\n，必须连 \r 一起去掉，否则
-        # 数据第一行前面会残留一个空行，导致按格式读第一行的代码 WA）
-        big_input = big_input.strip("\r\n")
-        big_output = big_output.strip("\r\n")
-        # 数据确实大才有意义
-        if len(big_input) < 2000:
-            return None
-        return [{"input": big_input, "output": big_output}]
+        # 按组切分：===CASE k INPUT=== 与 ===CASE k OUTPUT=== 成对出现
+        collected = []
+        for k in range(1, large_cases + 1):
+            in_marker = f"===CASE {k} INPUT==="
+            out_marker = f"===CASE {k} OUTPUT==="
+            i_pos = out.find(in_marker)
+            o_pos = out.find(out_marker)
+            if i_pos == -1 or o_pos == -1 or o_pos <= i_pos:
+                continue
+            seg_in = out[i_pos + len(in_marker):o_pos].strip("\r\n")
+            # 下一组的 INPUT 标记（若有）是这组 OUTPUT 的结束边界
+            next_marker = f"===CASE {k + 1} INPUT==="
+            n_pos = out.find(next_marker)
+            seg_out = (out[o_pos + len(out_marker):n_pos] if n_pos != -1
+                       else out[o_pos + len(out_marker):]).strip("\r\n")
+            # 单组数据必须足够大才有意义
+            if len(seg_in) < 2000:
+                continue
+            collected.append({"input": seg_in, "output": seg_out})
+        return collected if collected else None
     except Exception:
         return None
     finally:
