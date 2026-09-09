@@ -62,6 +62,21 @@ TESTCASE_PROMPT = """你是 OJ 测试点设计专家。下面是一道已设计�
 5. {coverage}
 """
 
+# 阶段二（标程）：让模型为题目输出一段解题标程（Python），服务器本地运行
+# 标程重算每个测试点的输出。模型手算的答案（如 90 写成 80）会被标程结果覆盖，
+# 保证题目测试点数据正确。
+SOLVER_PROMPT = """你是 OJ 标程编写专家。下面是一道编程题，请为它写一段 Python 标程（正确解法）。
+
+题目信息：
+{problem}
+
+要求：
+1. 直接输出 Python 代码（不要用 markdown 代码块包裹，不要任何额外文字）。
+2. 代码从标准输入读数据（input()/sys.stdin.read），结果写到标准输出。
+3. 解法必须正确，且能处理 constraints 声明范围内的所有输入（用高效算法）。
+4. 只依赖 Python 标准库。
+"""
+
 # 阶段三：大测试点生成器提示词。
 # 直接让模型输出大规模测试数据不现实（输出 token 上限），改为让模型写一个
 # 「数据生成器 + 标程」Python 脚本，由服务器本地执行产出大规模输入和标准输出，
@@ -72,7 +87,9 @@ GENERATOR_PROMPT = """你是 OJ 测试点生成器设计专家。下面这道题
 {problem}
 
 请输出一个 Python 脚本（不要用 markdown 代码块包裹，直接输出纯代码），脚本必须：
-1. 定义函数 generate_input(seed) -> str：根据随机种子 seed 返回一个符合 input_description 的**大规模**输入字符串（数据规模逼近 constraints 上限，如 n 取最大值、行数上万等）。
+1. 定义函数 generate_input(seed) -> str：根据随机种子 seed 返回一个符合 input_description 的输入字符串。数据规模按 seed 分档递进：
+   - seed 0（及任何非最后一个的 seed）：规模为 constraints 上限的 30%~60%（中等大数据，用于区分常数级优化）；
+   - 最后一个 seed（seed {large_cases} - 1）：规模逼近 constraints 上限（压轴极限数据，用于区分算法复杂度）。
 2. 定义函数 solve(data: str) -> str：返回该输入对应的正确输出字符串。solve 使用能通过题目的正确算法（标程），例如数据规模大时用 O(n log n) 或更优的解法。
 3. 在脚本末尾用循环生成 {large_cases} 个测试点（每个测试点用不同的 seed），每组的输出格式如下：
    for seed in range({large_cases}):
@@ -344,7 +361,96 @@ async def _generate_testcases(task: dict, problem: dict) -> Optional[list]:
             if isinstance(tc, dict) and "input" in tc and "output" in tc:
                 collected.append(tc)
 
+    # 标程验证：让模型写一段正确解法，本地运行重算每个测试点的 output，
+    # 与模型给的 output 不一致的丢弃（模型手算答案可能出错，如 90 写成 80）。
+    # 验证失败不整体失败——保留模型原始答案（有答案总比没测试点好）。
+    if collected:
+        verified = await _verify_testcases_with_solver(task, problem, collected)
+        if verified:
+            collected = verified
+
     return collected if collected else None
+
+
+async def _verify_testcases_with_solver(task: dict, problem: dict,
+                                        testcases: list) -> Optional[list]:
+    """用模型写的标程验证测试点答案，返回过滤后的测试点列表。
+
+    验证失败返回 None（调用方保留原始测试点）。
+    """
+    summary = {
+        "title": problem.get("title", ""),
+        "description": problem.get("description", ""),
+        "input_description": problem.get("input_description", ""),
+        "output_description": problem.get("output_description", ""),
+        "samples": problem.get("samples", []),
+        "constraints": problem.get("constraints", ""),
+    }
+    problem_text = json.dumps(summary, ensure_ascii=False, indent=2)
+
+    try:
+        content, usage = await llm.call_llm(
+            [
+                {"role": "system", "content": SOLVER_PROMPT.format(problem=problem_text)},
+                {"role": "user", "content": "请输出 Python 标程代码。"},
+            ],
+            temperature=0.2,
+        )
+        _accumulate_usage(task, usage)
+    except Exception:
+        return None
+
+    code = _extract_code(content)
+    if not code or ("def " not in code and "input" not in code and "sys.stdin" not in code):
+        return None
+
+    # 本地运行标程，逐个测试点重算 output（模型手算的答案可能错，如 90 写成 80，
+    # 这里以标程实际计算结果为准覆盖）
+    tmp_dir = os.path.join(config.JUDGE_TMP_DIR, "solver_" + task.get("task_id", "x"))
+    os.makedirs(tmp_dir, exist_ok=True)
+    solver_path = os.path.join(tmp_dir, "solver.py")
+    try:
+        with open(solver_path, "w", encoding="utf-8", newline="") as f:
+            f.write(code)
+        # 先用题面样例校验标程本身正确；标程连样例都对不上，就不敢用它覆盖
+        samples = problem.get("samples", [])
+        if samples:
+            first = samples[0]
+            res = await run_command(
+                ["python", solver_path],
+                stdin_data=first.get("input", ""),
+                time_limit=10.0,
+                memory_limit=256.0,
+                cwd=tmp_dir,
+            )
+            if (res.timed_out or res.memory_exceeded or res.returncode != 0
+                    or res.stdout.strip() != first.get("output", "").strip()):
+                return None
+
+        fixed: list = []
+        for tc in testcases:
+            res = await run_command(
+                ["python", solver_path],
+                stdin_data=tc.get("input", ""),
+                time_limit=10.0,
+                memory_limit=256.0,
+                cwd=tmp_dir,
+            )
+            if res.timed_out or res.memory_exceeded or res.returncode != 0:
+                # 标程跑不出来的测试点保留原答案（有总比没有好）
+                fixed.append(tc)
+                continue
+            tc["output"] = res.stdout.strip()
+            fixed.append(tc)
+        return fixed
+    except Exception:
+        return None
+    finally:
+        try:
+            import shutil
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------- 大规模测试点

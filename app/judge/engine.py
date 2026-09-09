@@ -123,9 +123,12 @@ async def judge_submission(submission: dict) -> dict:
                                            config.COMPILE_TIME_LIMIT,
                                            config.COMPILE_MEMORY_LIMIT)
 
+        # 编译信息脱敏：不把 g++ 的原始错误输出（含服务器本地绝对路径、
+        # 头文件内部细节）暴露给用户，只保留行号级别的错误摘要。
+        compile_msg = compile_res.stderr or compile_res.stdout or ""
         compile_info = {
             "result": "success" if compile_res.returncode == 0 else "failed",
-            "message": compile_res.stderr or compile_res.stdout or "",
+            "message": _summarize_compile_error(compile_msg),
         }
 
         # 编译失败 → 所有测试点 CE
@@ -188,6 +191,39 @@ async def judge_submission(submission: dict) -> dict:
     finally:
         # 清理临时目录
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _summarize_compile_error(raw: str) -> str:
+    """从 g++ 原始错误输出中提取用户友好的错误摘要。
+
+    - 去掉 #include 链（In file included from ...）与服务器本地绝对路径；
+    - 只保留 main.cpp 里出错的行号与错误行，方便定位；
+    - 无有效信息时返回精简的错误头几行（截断防过大）。
+    """
+    if not raw:
+        return ""
+    lines = raw.replace("\r\n", "\n").split("\n")
+    kept = []
+    for ln in lines:
+        # 丢弃 include 链和包含服务器路径的行
+        if ln.startswith("In file included"):
+            continue
+        if "main.cpp" in ln and (": error:" in ln or ": warning:" in ln):
+            kept.append(ln.strip())
+        # 保留紧跟错误的具体位置行（形如 `   xxx ^~~~` 不保留；保留 "error:" 摘要）
+    if kept:
+        # 去重保序，最多 20 条
+        seen, out = set(), []
+        for ln in kept:
+            if ln not in seen:
+                seen.add(ln)
+                out.append(ln)
+        return "\n".join(out[:20])
+    # 兜底：截取不含路径的行
+    fallback = [ln for ln in lines if "error:" in ln and "D:/" not in ln and "C:/" not in ln]
+    if fallback:
+        return "\n".join(fallback[:20])
+    return "编译失败（详见评测日志）"
 
 
 def _classify(run_res: RunResult, expected: str) -> tuple[str, str]:

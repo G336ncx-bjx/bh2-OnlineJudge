@@ -95,6 +95,10 @@ def _seed_languages() -> None:
             "time_limit": 1.0,
             "memory_limit": 128,
         }
+    # 兼容修复：早期曾写入 -std=c++17，但本机 MinGW 8.1 的 stdc++.h 与
+    # c++17 的 filesystem 库冲突导致编译失败，统一回退为默认标准
+    elif "-std=" in langs["cpp"].get("compile_cmd", ""):
+        langs["cpp"]["compile_cmd"] = "g++ {src} -o {exe}"
     storage.save_languages(langs)
 
 
