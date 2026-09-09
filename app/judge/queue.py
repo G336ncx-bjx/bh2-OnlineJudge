@@ -89,8 +89,27 @@ def _rebuild_resolved(user_id: str) -> list[str]:
     return resolved
 
 
+def _rebuild_attempted(user_id: str) -> list[str]:
+    """从该用户全部历史提交中重建「提交过的题目」集合（一题一次）。"""
+    attempted: list[str] = []
+    for sid in storage.list_submission_ids():
+        s = storage.get_submission(sid)
+        if s is None or s.get("user_id") != user_id:
+            continue
+        pid = s.get("problem_id")
+        if pid and pid not in attempted:
+            attempted.append(pid)
+    return attempted
+
+
 def _update_user_stats(submission: dict) -> None:
-    """更新用户的 submit_count / resolve_count（一个题目贡献一次）。"""
+    """更新用户的 submit_count / resolve_count / attempted_count。
+
+    - submit_count：每次提交 +1；
+    - attempted_problems：提交过的题目集合（按题去重，一题一次）；
+    - resolved_problems：通过的题目集合（按题去重，一题一次）。
+    通过率 = resolve_count / attempted_count（提交过的题为基数）。
+    """
     user_id = submission.get("user_id")
     if not user_id:
         return
@@ -100,13 +119,18 @@ def _update_user_stats(submission: dict) -> None:
         return
     user.setdefault("submit_count", 0)
     user["submit_count"] += 1
-    # 惰性初始化「已通过题目」集合：旧数据没有该字段时从历史提交重建
+    # 惰性初始化「提交过题目」与「已通过题目」集合：旧数据没有字段时从历史提交重建
+    if "attempted_problems" not in user:
+        user["attempted_problems"] = _rebuild_attempted(user_id)
     if "resolved_problems" not in user:
         user["resolved_problems"] = _rebuild_resolved(user_id)
         user["resolve_count"] = len(user["resolved_problems"])
+    # 本题未在「提交过」集合 → 加入（提交基数按题去重）
+    pid = submission.get("problem_id")
+    if pid and pid not in user["attempted_problems"]:
+        user["attempted_problems"].append(pid)
     # 满分且该题尚未通过 → 通过数 +1（同题重复 AC 不重复计数）
     if _is_full_score(submission):
-        pid = submission.get("problem_id")
         if pid and pid not in user["resolved_problems"]:
             user["resolved_problems"].append(pid)
             user.setdefault("resolve_count", 0)

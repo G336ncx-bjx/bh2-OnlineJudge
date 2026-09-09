@@ -24,6 +24,9 @@ def _verify_password(password: str, hashed: str) -> bool:
 
 def _user_public(user: dict) -> dict:
     """返回不含密码的用户信息。"""
+    # attempted_count 惰性计算：旧数据可能没有 attempted_problems 字段，
+    # 有则取集合长度（按题去重）
+    attempted = user.get("attempted_problems")
     return {
         "user_id": user["user_id"],
         "username": user["username"],
@@ -31,6 +34,7 @@ def _user_public(user: dict) -> dict:
         "role": user.get("role", "user"),
         "submit_count": user.get("submit_count", 0),
         "resolve_count": user.get("resolve_count", 0),
+        "attempted_count": len(attempted) if isinstance(attempted, list) else 0,
     }
 
 
@@ -194,6 +198,7 @@ async def list_users(request: Request, page: int = None, page_size: int = None):
             "join_time": u.get("join_time", ""),
             "submit_count": u.get("submit_count", 0),
             "resolve_count": u.get("resolve_count", 0),
+            "attempted_count": len(u.get("attempted_problems") or []),
         })
     return ok({"total": total, "users": data})
 

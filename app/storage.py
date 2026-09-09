@@ -124,7 +124,8 @@ def remove_problem_from_users_resolved(problem_id: str) -> None:
     题目被删除后，该题的历史提交与通过记录一并清除，因此：
     - submit_count 减去该用户对这道题的提交数；
     - 若该题在用户「已通过题目」集合中，从集合移除并将 resolve_count 减 1
-      （与「一个题目贡献一次」的口径保持一致）。
+      （与「一个题目贡献一次」的口径保持一致）；
+    - 若该题在用户「提交过的题目」集合中，同样移除（与 attempted 口径一致）。
     """
     users = get_users()
     # 统计每个用户对这道题的提交数
@@ -144,6 +145,10 @@ def remove_problem_from_users_resolved(problem_id: str) -> None:
         if isinstance(resolved, list) and problem_id in resolved:
             u["resolved_problems"] = [p for p in resolved if p != problem_id]
             u["resolve_count"] = max(0, u.get("resolve_count", 0) - 1)
+            changed = True
+        attempted = u.get("attempted_problems")
+        if isinstance(attempted, list) and problem_id in attempted:
+            u["attempted_problems"] = [p for p in attempted if p != problem_id]
             changed = True
     if changed:
         save_users(users)
