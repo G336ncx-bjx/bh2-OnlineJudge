@@ -472,30 +472,6 @@ async def _verify_testcases_with_solver(task: dict, problem: dict,
 
 
 # ---------------------------------------------------------------- 大规模测试点
-def _needs_large_testcases(problem: dict) -> bool:
-    """判断是否需要补充大规模测试点。
-
-    启发式：从 constraints 中提取声明的大数据量（如 n、长度、范围上限），
-    若声明的规模（≥10^4 量级）明显大于已有测试点的实际输入规模，则认为需要。
-    保守策略：拿不准时返回 False（不折腾，保持流程稳定）。
-    """
-    constraints = problem.get("constraints", "") or ""
-    tcs = problem.get("testcases", [])
-    if not tcs:
-        return False
-    max_in_len = max(len(tc.get("input", "")) for tc in tcs)
-    # 提取 constraints 中的数字上限（取最大的数值）
-    nums = [int(x) for x in re.findall(r"\d+", constraints)]
-    big = [n for n in nums if n >= 10_000]
-    if not big:
-        return False
-    declared_max = max(big)
-    # 实际输入太小（字符数 < 声明规模的 1/100，且小于 2000 字符）才需要增强
-    if max_in_len < 2000 and max_in_len * 100 < declared_max:
-        return True
-    return False
-
-
 def _extract_code(content: str) -> str:
     """从模型返回文本中提取脚本代码（兼容 markdown 代码块）。"""
     text = content.strip()
@@ -575,8 +551,10 @@ async def _generate_large_testcases(task: dict, problem: dict,
             n_pos = out.find(next_marker)
             seg_out = (out[o_pos + len(out_marker):n_pos] if n_pos != -1
                        else out[o_pos + len(out_marker):]).strip("\r\n")
-            # 单组数据必须足够大才有意义
-            if len(seg_in) < 2000:
+            # 生成器脚本是按「逼近 constraints 上限」的提示词写的，跑通即可采纳。
+            # 不设字符长度门槛：有些题输入天生短（如一行两个整数），
+            # 它的「大测试点」是取上限值而非长输入。
+            if not seg_in:
                 continue
             collected.append({"input": seg_in, "output": seg_out})
         return collected if collected else None
