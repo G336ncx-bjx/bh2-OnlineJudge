@@ -522,23 +522,39 @@ async def _generate_large_testcases(task: dict, problem: dict,
     }
     problem_text = json.dumps(summary, ensure_ascii=False, indent=2)
 
-    try:
-        content, usage = await llm.call_llm(
-            [
-                {"role": "system", "content": GENERATOR_PROMPT.format(
-                    problem=problem_text, large_cases=large_cases)},
-                {"role": "user", "content": "请输出生成器脚本。"},
-            ],
-            temperature=0.3,
-        )
-        _accumulate_usage(task, usage)
-    except Exception:
-        return None
+    # 网络抖动时模型可能返回空内容（如 SSL 抖动导致响应异常），空内容重试最多 2 次
+    content = ""
+    usage = None
+    for attempt in range(3):
+        try:
+            content, usage = await llm.call_llm(
+                [
+                    {"role": "system", "content": GENERATOR_PROMPT.format(
+                        problem=problem_text, large_cases=large_cases)},
+                    {"role": "user", "content": "请输出生成器脚本。"},
+                ],
+                temperature=0.3,
+            )
+            _accumulate_usage(task, usage)
+        except Exception:
+            return None
+        if content and content.strip():
+            break
+        # 空内容：记录重试并稍等
+        if attempt < 2:
+            await asyncio.sleep(3 * (attempt + 1))
     if await _check_cancelled(task.get("task_id", "")):
         return None
 
     code = _extract_code(content)
-    if "generate_input" not in code or "solve" not in code:
+    if not code or "generate_input" not in code or "solve" not in code:
+        # 失败原因记入任务，便于排查（不再是静默失败）
+        note = task.get("generator_note", "")
+        task["generator_note"] = (note + "；" if note else "") + (
+            "模型返回空内容" if not content or not content.strip()
+            else "脚本内容无效"
+        )
+        _save_task(task)
         return None
 
     # 在临时目录写脚本并执行
