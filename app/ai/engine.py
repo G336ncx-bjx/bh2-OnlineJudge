@@ -31,14 +31,20 @@ SYSTEM_PROMPT = """你是一名资深的 OJ（在线评测）出题人。请根�
   "tags": ["标签"],
   "time_limit": 1.0,
   "memory_limit": 128,
-  "difficulty": "难度"
+  "difficulty": "难度",
+  "testcase_plan": {"small": 8, "large": 2}
 }
 
 要求：
 1. 题目必须紧扣用户指定的知识点和难度。
 2. 数据规模要能区分不同时间复杂度的算法（如 O(n) vs O(n^2)），并写清楚在 constraints 中。
 3. 样例（samples）至少 2 组，输入输出必须严格一致、可验证。
-4. 只输出上述字段，不要包含 testcases（测试点会另行生成）。
+4. testcase_plan 是你对测试点构成的规划：共 10 个测试点，其中 small 个小规模测试点（覆盖边界、特殊、普通情况，用模型直接生成）+ large 个大规模测试点（数据逼近 constraints 上限，用本地生成器脚本产出）。根据题目性质分配：
+   - 数据规模大、侧重考察算法复杂度的题：small 6~7 个、large 3~4 个；
+   - 侧重考察正确性与边界的题：small 8~9 个、large 1~2 个；
+   - 数据规模很小的简单题（如字符串反转）：large 可以为 0。
+   两者之和必须等于 10。
+5. 只输出上述字段，不要包含 testcases（测试点会另行生成）。
 """
 
 # 命题系统提示词（阶段二）：只生成测试点（分批，每次指定数量，降低单次输出长度）
@@ -230,7 +236,17 @@ async def run_problem_task(task_id: str) -> None:
         task["progress"] = "正在生成测试点"
         _save_task(task)
 
-        testcases = await _generate_testcases(task, problem)
+        # 按题目自带 testcase_plan 决定小/大测试点数量（共 10 个，模型按题目
+        # 性质分配：考复杂度的题大测试点多、考正确性的题小测试点多）。
+        plan = problem.get("testcase_plan") or {}
+        small_n = int(plan.get("small", 8) or 8)
+        large_n = int(plan.get("large", 2) or 2)
+        small_n = max(1, min(small_n, 10))
+        large_n = max(0, min(large_n, 10 - small_n))
+        if small_n + large_n < 10:
+            small_n = 10 - large_n
+
+        testcases = await _generate_testcases(task, problem, min_cases=small_n)
         if testcases is None:
             task["status"] = "failed"
             task["progress"] = "测试点生成失败"
@@ -240,14 +256,13 @@ async def run_problem_task(task_id: str) -> None:
         problem["testcases"] = testcases
 
         # 阶段 3.5：大规模测试点增强（可选，失败不影响整体）
-        # constraints 声明大规模数据但已生成测试点规模偏小时，让模型写
-        # 「生成器+标程」脚本，本地执行产出大规模测试点，突破模型输出上限。
+        # 让模型写「生成器+标程」脚本，本地执行产出大规模测试点，突破模型输出上限。
         if await _check_cancelled(task_id):
             return
-        if _needs_large_testcases(problem):
+        if large_n > 0:
             task["progress"] = "正在生成大规模测试点"
             _save_task(task)
-            large = await _generate_large_testcases(task, problem, large_cases=2)
+            large = await _generate_large_testcases(task, problem, large_cases=large_n)
             if large:
                 problem["testcases"].extend(large)
 
@@ -290,17 +305,20 @@ async def run_problem_task(task_id: str) -> None:
         _save_task(task)
 
 
-async def _generate_testcases(task: dict, problem: dict) -> Optional[list]:
+async def _generate_testcases(task: dict, problem: dict, min_cases: int = 8) -> Optional[list]:
     """阶段二：分批调用模型为题目生成测试点，返回 testcases 列表（失败返回 None）。
 
     把题目主体序列化成精简 JSON 作为上下文传给模型，让模型只输出测试点，
     避免「整题+测试点」一次性输出过长导致被 max_tokens 截断或触发硬超时。
 
     分批生成：每次只让模型生成少量测试点（BATCH_SIZE 个），循环凑够至少
-    MIN_CASES 个。这样单次输出短、耗时短、进度可见；单批失败可重试而不整体失败，
+    min_cases 个。这样单次输出短、耗时短、进度可见；单批失败可重试而不整体失败，
     从根本上降低「复杂题生成测试点超时」的概率。
+
+    min_cases：目标小规模测试点数量。需要大规模测试点的题用 8（+2 个大规模
+    = 10）；小规模题直接生成 10 个。
     """
-    MIN_CASES = 8      # 至少生成 8 个小规模测试点（+ 2 个大规模 = 常规 10 个）
+    MIN_CASES = min_cases
     BATCH_SIZE = 4     # 每批生成 4 个
     MAX_BATCHES = 4    # 最多 4 批（兜底，防止无限循环）
 
