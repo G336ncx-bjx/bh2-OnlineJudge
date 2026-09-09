@@ -173,9 +173,9 @@
   <div class="subtitle">—— 课程大作业实验报告 ——</div>
   <div class="info">
     <div><strong>作业模块：</strong>基础模块 Step 1–6（30 分）+ 进阶模块 AI 智能命题（10 分）</div>
-    <div><strong>技术栈：</strong>FastAPI（异步） + Streamlit + JSON 文件存储 + subprocess/psutil 评测 + DeepSeek 大模型</div>
-    <div><strong>代码规模：</strong>后端 17 个模块 2535 行 + 前端 1899 行 = 4434 行</div>
-    <div><strong>git 提交：</strong>82 次 Conventional Commits 规范提交</div>
+    <div><strong>技术栈：</strong>FastAPI（异步） + Streamlit + JSON 文件存储 + subprocess/psutil 评测 + OpenAI 兼容大模型（DeepSeek / TokenHub 等，可配置切换）</div>
+    <div><strong>代码规模：</strong>后端 21 个模块 3014 行 + 前端 1991 行 = 5005 行</div>
+    <div><strong>git 提交：</strong>107 次 Conventional Commits 规范提交</div>
   </div>
   <div style="margin-top: 50pt; color: #888; font-size: 10pt;">
     报告生成于 2026 年 9 月
@@ -208,9 +208,9 @@
   <figcaption>图 1.1 OJ 系统整体架构</figcaption>
 </figure>
 
-<p><strong>前端层（Streamlit，<code>frontend/app.py</code>，1899 行）</strong>：通过 <code>requests</code> 库调用后端 REST API，不直接访问数据。包含用户、题目、评测提交、AI 命题四组页面，所有受保护操作均通过 Session Cookie 保持登录态，刷新页面通过 localStorage 恢复会话。</p>
+<p><strong>前端层（Streamlit，<code>frontend/app.py</code>，1991 行）</strong>：通过 <code>requests</code> 库调用后端 REST API，不直接访问数据。包含用户、题目、评测提交、AI 命题四组页面，所有受保护操作均通过 Session Cookie 保持登录态，刷新页面通过 localStorage 恢复会话。</p>
 
-<p><strong>后端层（FastAPI，<code>app/</code>，2535 行，30+ 个异步接口）</strong>：</p>
+<p><strong>后端层（FastAPI，<code>app/</code>，3014 行，32 个异步接口）</strong>：</p>
 <div class="grid">
   <div class="card">
     <h4>路由层 <code>app/routers/</code></h4>
@@ -249,13 +249,13 @@
 <p>六大模块对应六个 <code>routers/</code> 子模块，文件归属严格对应：</p>
 <table>
   <tr><th>评分模块</th><th>对应文件</th><th>关键接口</th><th>分值</th></tr>
-  <tr><td>Step 1 题目管理</td><td><code>app/routers/problems.py</code>（168 行）</td><td>GET/POST/PUT/DELETE <code>/api/problems/</code></td><td>5</td></tr>
-  <tr><td>Step 2 评测控制</td><td><code>app/judge/</code>（480 行） + <code>routers/languages.py</code>（43 行）</td><td>POST <code>/api/submissions/</code>、<code>/api/languages/</code></td><td>5</td></tr>
+  <tr><td>Step 1 题目管理</td><td><code>app/routers/problems.py</code>（167 行）</td><td>GET/POST/PUT/DELETE <code>/api/problems/</code></td><td>5</td></tr>
+  <tr><td>Step 2 评测控制</td><td><code>app/judge/</code>（554 行） + <code>routers/languages.py</code>（43 行）</td><td>POST <code>/api/submissions/</code>、<code>/api/languages/</code></td><td>5</td></tr>
   <tr><td>Step 3 评测管理</td><td><code>app/routers/submissions.py</code>（235 行）</td><td>GET 列表/详情、PUT rejudge</td><td>5</td></tr>
-  <tr><td>Step 4 用户管理</td><td><code>app/routers/users.py</code>（235 行）</td><td>注册/登录/登出、PUT 角色</td><td>5</td></tr>
+  <tr><td>Step 4 用户管理</td><td><code>app/routers/users.py</code>（240 行）</td><td>注册/登录/登出、PUT 角色</td><td>5</td></tr>
   <tr><td>Step 5 评测日志</td><td><code>app/routers/logs.py</code>（43 行）</td><td>GET 日志、PUT 可见性、GET 审计</td><td>5</td></tr>
-  <tr><td>Step 6 前端</td><td><code>frontend/app.py</code>（1899 行）</td><td>—</td><td>5</td></tr>
-  <tr><td>AI 智能命题</td><td><code>app/ai/</code>（607 行） + <code>routers/ai.py</code>（210 行）</td><td>配置/任务/进度/取消</td><td>10</td></tr>
+  <tr><td>Step 6 前端</td><td><code>frontend/app.py</code>（1991 行）</td><td>—</td><td>5</td></tr>
+  <tr><td>AI 智能命题</td><td><code>app/ai/</code>（949 行） + <code>routers/ai.py</code>（214 行）</td><td>配置/任务/进度/取消</td><td>10</td></tr>
 </table>
 
 <h3>1.5 统一响应结构</h3>
@@ -329,7 +329,7 @@ def _parse_command(cmd: str) -> list[str]:
 <p>这样既能立即响应客户端，又能避免多次提交造成 OOM。</p>
 
 <h3>2.6 AI 命题模块（进阶，核心难点）</h3>
-<p>AI 模块采用 <strong>OpenAI 兼容 chat completions</strong> 接口（<code>httpx</code> 异步调用），实测接入 <strong>DeepSeek</strong> 大模型，支持任意 provider 可配置。命题流程采用 <strong>分阶段生成</strong>策略，每个阶段都写入任务 JSON 的 <code>progress</code> 字段，前端自动轮询拉取最新进度：</p>
+<p>AI 模块采用 <strong>OpenAI 兼容 chat completions</strong> 接口（<code>httpx</code> 异步调用），支持任意 provider 可配置切换（实测接入 DeepSeek 与 TokenHub 两个提供商，配置仅需改 provider_url / model / api_key）。命题流程采用 <strong>分阶段生成</strong>策略，每个阶段都写入任务 JSON 的 <code>progress</code> 字段，前端自动轮询拉取最新进度：</p>
 
 <figure>
   <img src="ai_flow.png" alt="AI 命题流程图">
@@ -518,7 +518,7 @@ def _parse_command(cmd: str) -> list[str]:
   <li><strong>需求通读</strong>：本人先完整阅读全部 11 份需求文档，梳理评分点与功能边界。</li>
   <li><strong>需求转化为自然语言指令</strong>：本人将每个功能点描述为明确的目标、约束与验收标准，交给 AI 执行。</li>
   <li><strong>AI 分模块生成</strong>：AI 按 Step 顺序逐个实现，每个模块先写路由再写共享层，边写边由本人用 curl 实测。</li>
-  <li><strong>本人端到端验收</strong>：每写完一块立即实测接口，发现 bug 就向 AI 复现现象并让其定位修复；AI 命题用真实 DeepSeek 跑通全链路。</li>
+  <li><strong>本人端到端验收</strong>：每写完一块立即实测接口，发现 bug 就向 AI 复现现象并让其定位修复；AI 命题用真实大模型（DeepSeek / TokenHub）跑通全链路。</li>
   <li><strong>持续提交</strong>：每完成一个功能点就按 Conventional Commits 规范拆分提交并 push，而非一次性提交。</li>
 </ol>
 
@@ -528,7 +528,7 @@ def _parse_command(cmd: str) -> list[str]:
   <tr><th>环节</th><th>承担方</th><th>说明</th></tr>
   <tr><td>需求拆解与描述</td><td>本人</td><td>通读 11 份要求文档，将评分点转化为可执行的自然语言需求，逐条向 AI 描述目标、边界与验收标准。</td></tr>
   <tr><td>代码编写</td><td>AI 为主</td><td>路由、Pydantic 模型、JSON 存储、异步评测引擎、AI 命题任务、Streamlit 前端等几乎全部由 AI 生成。</td></tr>
-  <tr><td>验收与测试</td><td>本人</td><td>逐项对照要求文档核对功能，用 curl / 真实 DeepSeek 出题 / 浏览器实测，发现并定位问题。</td></tr>
+  <tr><td>验收与测试</td><td>本人</td><td>逐项对照要求文档核对功能，用 curl / 真实大模型出题 / 浏览器实测，发现并定位问题。</td></tr>
   <tr><td>缺陷反馈与迭代</td><td>本人 + AI</td><td>本人描述 bug 现象（如"刷新回登录页""改单价丢密钥""输出被截断""中断未真正停止"），AI 定位根因并修复。</td></tr>
 </table>
 <p>也就是说，这是一次典型的 <strong>Vibe Coding</strong> 实践：本人扮演"产品经理 + 测试"角色，负责定义要做什么、判断做得对不对；AI 扮演"工程师"，负责具体实现。本人不逐行手写代码，但<strong>全程主导方向、逐项验收、对最终交付质量负责</strong>。</p>
@@ -552,7 +552,7 @@ def _parse_command(cmd: str) -> list[str]:
   <tr><td>AI 智能命题模块</td><td>约 3 小时</td><td>模型调用、任务状态机、分阶段生成、Token 计费、真实出题与中断验证</td></tr>
   <tr><td>AI 命题数据质量与容错</td><td>约 2.5 小时</td><td>标程重算验证、坏数据丢弃、生成器大测试点、testcase_plan、网络重试、僵尸任务恢复、大测试点前端摘要化</td></tr>
   <tr><td>前端交互与体验打磨</td><td>约 2 小时</td><td>三组页面美化、会话持久化、分页、AI 配置弹窗与历史列表</td></tr>
-  <tr><td>持续提交与推送</td><td>约 1.5 小时</td><td>106 次 Conventional Commits + push</td></tr>
+  <tr><td>持续提交与推送</td><td>约 1.5 小时</td><td>107 次 Conventional Commits + push</td></tr>
   <tr><td>报告与配图</td><td>约 1 小时</td><td>本文档 + 3 张配图</td></tr>
   <tr><th>总计</th><th>约 15.5 小时</th><th>—</th></tr>
 </table>
