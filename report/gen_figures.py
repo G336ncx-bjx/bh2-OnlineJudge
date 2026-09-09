@@ -155,23 +155,23 @@ def gen_judge_flow():
 
 
 def gen_ai_flow():
-    W, H = 1200, 720
+    W, H = 1200, 780
     img = Image.new("RGB", (W, H), "white")
     d = ImageDraw.Draw(img)
 
     f_title = _font(30, bold=True)
-    title = "AI 智能命题：分阶段生成与中断机制"
+    title = "AI 智能命题：分阶段生成、标程验证与数据质量保障"
     d.text((W / 2 - d.textlength(title, font=f_title) / 2, 24),
            title, fill="#1a1a2e", font=f_title)
 
     # 阶段流程（横向两列）
     steps = [
         ("① 提交命题需求", "构建 prompt（知识点/难度/参考题目）", "#4e79a7"),
-        ("② 生成题目主体", "LLM 返回题目 JSON（不含测试点，控制输出长度）", "#59a14f"),
-        ("③ 解析题目 JSON", "兼容代码块包裹 + 截断兜底修复", "#f28e2b"),
-        ("④ 分批生成测试点", "每批 3 个循环凑够 ≥5 个，单批失败可重试", "#e15759"),
-        ("⑤ 校验补全", "必填字段校验 + 默认值补全 + public_cases", "#af7aa1"),
-        ("⑥ 表单导入题库", "复用题目表单展示，可直接/修改后导入", "#76b7b2"),
+        ("② 生成题目主体 + 测试点规划", "LLM 返回题目 JSON 与 testcase_plan（小/大测试点比例）", "#59a14f"),
+        ("③ 分批生成小测试点", "每批 4 个凑够规划数量，单批网络抖动自动重试", "#f28e2b"),
+        ("④ 标程重算验证", "模型写标程跑样例自检，重算每个测试点 output 并丢弃坏数据", "#e15759"),
+        ("⑤ 生成器产出大测试点", "模型写生成器脚本，本地执行逼近 constraints 上限的数据", "#af7aa1"),
+        ("⑥ 校验补全 + 表单导入题库", "必填字段校验 + 默认值补全，可直接/修改后导入", "#76b7b2"),
     ]
     x = 70
     y = 100
@@ -186,11 +186,13 @@ def gen_ai_flow():
         y += h + gap
 
     # 中断机制说明框
-    _draw_box(d, (70, y + 10, W - 70, y + 96), "", "#f0f5fa", font_size=16)
+    _draw_box(d, (70, y + 10, W - 70, y + 112), "", "#f0f5fa", font_size=16)
     d.text((95, y + 24), "中断机制：真正终止大模型输出", fill="#2a4d75", font=_font(18, bold=True))
     d.text((95, y + 56), "· 全局协程注册表 _RUNNING_TASKS：task_id → asyncio.Task，start_task 登记、结束自动移除",
            fill="#1a1a2e", font=_font(15))
     d.text((95, y + 78), "· cancel 接口调用 task.cancel() 触发 CancelledError，立即打断进行中的 httpx LLM HTTP 请求",
+           fill="#1a1a2e", font=_font(15))
+    d.text((95, y + 100), "· 网络抖动容错：单次 SSL/空响应自动重试，单批失败不整体失败；服务重启后遗留任务自动标记失效",
            fill="#1a1a2e", font=_font(15))
 
     img.save(os.path.join(HERE, "ai_flow.png"), "PNG")

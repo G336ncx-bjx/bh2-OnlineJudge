@@ -368,14 +368,16 @@ def _parse_command(cmd: str) -> list[str]:
 
 <figure>
   <img src="ai_flow.png" alt="AI 命题流程图">
-  <figcaption>图 2.2 AI 命题分阶段生成与中断机制</figcaption>
+  <figcaption>图 2.2 AI 命题分阶段生成、标程验证与数据质量保障</figcaption>
 </figure>
 
 <ol>
   <li><strong>分析需求</strong>：构造 prompt（系统提示词 + 用户需求 + 可选参考题目）。</li>
-  <li><strong>生成题目主体</strong>：第一次调用 LLM，只生成题目字段（不含 testcases），控制单次输出长度。</li>
+  <li><strong>生成题目主体 + 测试点规划</strong>：第一次调用 LLM 生成题目字段（不含 testcases），并输出 <code>testcase_plan</code>（小/大测试点比例，共 10 个）——考察算法复杂度的题大测试点多、考察正确性的题小测试点多，由模型按题目性质自行规划。</li>
   <li><strong>解析 JSON</strong>：兼容 <code>```json</code> 代码块包裹或裸 JSON，并对截断做兜底修复。</li>
-  <li><strong>分批生成测试点</strong>：每批让模型生成 3 个测试点，循环凑够至少 5 个，单批失败可重试而不整体失败。</li>
+  <li><strong>分批生成小测试点</strong>：每批 4 个循环凑够规划数量，单批网络抖动自动重试、不整体失败。</li>
+  <li><strong>标程重算验证</strong>：让模型为题目写一段 Python 标程，先用题面样例自检；通过后用标程<strong>重算每个测试点的 output 覆盖模型手算答案</strong>（模型手算易错，实测出现过 90 写成 80）；标程跑崩的测试点视为输入违反题目保证的坏数据，<strong>直接丢弃</strong>并记录原因（实测拦截过多线程题"声明 q=8 实际 7 行"的坏数据）。</li>
+  <li><strong>生成器产出大测试点</strong>：让模型写「数据生成器 + 标程」脚本，本地执行产出逼近 constraints 上限的大规模测试点（突破模型输出 token 上限），规模按 seed 分档递进。</li>
   <li><strong>校验补全</strong>：检查必填字段、补充默认值（含 tags/difficulty）、生成 <code>public_cases</code> 标志。</li>
   <li><strong>表单导入题库</strong>：前端复用题目表单展示结果，可直接或修改后导入（保留知识点标签与难度）。</li>
 </ol>
@@ -385,17 +387,29 @@ def _parse_command(cmd: str) -> list[str]:
 </div>
 
 <div class="box tip">
-  <strong>难点二：命题硬超时误杀。</strong><code>call_llm</code> 外层用 <code>asyncio.wait_for(timeout)</code> 做硬截止兜底，但固定 120s 会无差别误杀「正常但慢速」的生成——实测一次「动态规划·较难」命题，阶段一成功生成题目（4477 token），阶段二生成测试点时被 120s 硬超时误判为 <code>TimeoutError</code>，且 <code>str(TimeoutError())</code> 为空串导致前端错误提示空白。解决方案三管齐下：① 硬超时放宽到 600s（<code>config.AI_LLM_TIMEOUT</code>）；② 测试点改「分批生成」（每批 3 个，单次输出短、耗时短，从根本降低超时概率）；③ 异常处理用 <code>type(e).__name__</code> 兜底，超时给出可读提示「模型响应超时，请稍后重试」。修复后复杂题也能稳定出题。
+  <strong>难点二：命题硬超时误杀。</strong><code>call_llm</code> 外层用 <code>asyncio.wait_for(timeout)</code> 做硬截止兜底，但固定 120s 会无差别误杀「正常但慢速」的生成——实测一次「动态规划·较难」命题，阶段一成功生成题目（4477 token），阶段二生成测试点时被 120s 硬超时误判为 <code>TimeoutError</code>，且 <code>str(TimeoutError())</code> 为空串导致前端错误提示空白。解决方案三管齐下：① 硬超时放宽到 600s（<code>config.AI_LLM_TIMEOUT</code>）；② 测试点改「分批生成」（每批少量、单次输出短、耗时短，从根本降低超时概率）；③ 异常处理用 <code>type(e).__name__</code> 兜底，超时给出可读提示「模型响应超时，请稍后重试」。修复后复杂题也能稳定出题。
 </div>
 
 <div class="box tip">
   <strong>难点三：中断要「真正终止大模型输出」。</strong>若仅把任务状态置为 <code>cancelled</code>、依赖执行循环在阶段间检查，那么进行中的模型 HTTP 调用（几十秒）不会被打断，直到该次调用返回后才退出——这不满足「中断应实际终止任务」的要求。最终方案是维护一个全局协程注册表 <code>_RUNNING_TASKS</code>（<code>task_id → asyncio.Task</code>），中断时调用 <code>task.cancel()</code> 触发 <code>CancelledError</code>，<strong>立即打断正在 <code>await</code> 的 httpx 请求</strong>并关闭底层连接。实测运行中点击中断 → 立即 <code>cancelled</code>、<code>result=None</code>，未继续跑完剩余阶段。
 </div>
 
+<div class="box tip">
+  <strong>难点四：AI 生成数据的正确性兜底。</strong>两个真实翻车案例：① 模型手算测试点答案出错（任务调度题答案应为 90 却生成 80，用户正确代码被误判 WA）；② 测试点输入违反题目保证（多线程题声明 8 个事件实际只有 7 行，正常解法全部 RE）。前者靠「标程重算覆盖」根治；后者靠「标程自检通过后，跑崩即坏数据、丢弃」拦截。核心思想：<strong>标程通过样例自检后，它本身就是数据质量的判定器</strong>——它跑不出来的测试点不可能让任何正常解法通过。另实测发现本机 MinGW 8.1 的 <code>stdc++.h</code> 与 <code>-std=c++17</code> 的 filesystem 库冲突会导致所有 C++ 提交 CE，启动时自动检测并回退默认标准。
+</div>
+
+<div class="box tip">
+  <strong>难点五：网络抖动的全过程容错。</strong>实测遭遇三类故障：SSL 记录层失败（<code>DECRYPTION_FAILED_OR_BAD_RECORD_MAC</code>）、连接重置、模型返回空内容。逐层加固：① <code>call_llm</code> 内对连接类瞬时错误自动重试（间隔递增，最多 4 次）；② 测试点单批调用异常不整体失败，保留已收集批次继续；③ 生成器脚本调用遇空内容重试 3 次，仍失败把原因写入任务 <code>generator_note</code> 留痕；④ 服务重启时遗留的 pending/running 命题任务自动标记失效并提示重新提交（命题协程是内存态，重启不自动恢复），杜绝"永久卡住"的僵尸任务。
+</div>
+
+<div class="box tip">
+  <strong>难点六：大测试点的前端渲染压力。</strong>生成器产出的大测试点动辄百万字符（实测最大 728 万字符），把完整 JSON 塞进 Streamlit 表单的 textarea 会卡死浏览器，导致题目无法导入。解决：表单默认把大测试点（&gt;2000 字符）折叠为摘要显示（字符数 + 提示），「展开编辑」开关放在表单外（Streamlit 表单内控件不即时生效），勾选才加载完整内容；未展开提交时直接用后端 prefill 的完整数据组装 payload，<strong>数据一个字符不丢</strong>。同时前端轮询改为<strong>快照对比</strong>——每 2 秒查询接口但仅当状态/进度/Token 用量变化时才整页刷新，数据不变页面保持静止，消除闪烁。
+</div>
+
 <p><strong>Token 与费用</strong>：从 API 响应 <code>usage</code> 字段读取 <code>prompt_tokens</code> / <code>completion_tokens</code>，输入输出分离计价，费用公式：</p>
 <pre><code>cost = (input_tokens / price_unit) * input_price
      + (output_tokens / price_unit) * output_price</code></pre>
-<p>计价币种可配置（USD / CNY），DeepSeek 按人民币计价，实测生成「货架寻价」二分题：输入 1150 / 输出 16142 token，费用 <span class="num">¥0.223</span>。</p>
+<p>计价币种可配置（USD / CNY），按人民币计价。实测统计：简单题（Python print）55 秒 ¥0.007；中等题（死锁检测，无大测试点）4 分 20 秒 ¥0.032；复杂题（带 3 个大测试点，最大 148 万字符）约 7-8 分钟 ¥0.053。</p>
 
 <p><strong>配置安全</strong>：API 密钥保存在服务器级配置 <code>data/ai_model_config.json</code>，查询接口只返回 <code>api_key_configured: true</code> 布尔标志、绝不回显明文；密钥输入框留空即「不修改」，避免改单价时误清空密钥。</p>
 
@@ -453,6 +467,14 @@ def _parse_command(cmd: str) -> list[str]:
   <strong>修正三：提交频率限制改为「单人单题」。</strong>原实现按用户全局计数（1 分钟所有题合计 3 次），改为按 <code>(user_id, problem_id)</code> 维度分别计数：同一用户对同一题 1 分钟最多 3 次，换题不受影响。实测同题第 4 次 429、换题 200、管理员仍免限。
 </div>
 
+<div class="box warn">
+  <strong>修正四：通过率口径两次迭代。</strong>第一版为「通过题数 ÷ 提交次数」——分子按题去重、分母按次累计，量纲混乱，同一题反复提交反而拉低通过率。第二版改为「通过题数 ÷ 题库总题数」（完成度口径）。最终按验收口径定为<strong>「通过题数 ÷ 提交过评测的题数」（按题去重）</strong>：没碰过的题不拉低通过率，同一题反复提交也不影响。实现上用户数据新增 <code>attempted_problems</code> 集合（与 <code>resolved_problems</code> 配对），删除题目时两者同步回退；旧数据在服务启动时从历史提交一次性重建（实测迁移后 admin 提交过 5 题全过 → 100.0%）。
+</div>
+
+<div class="box warn">
+  <strong>修正五：评测/命题页面的信息展示边界。</strong>按"评测结果以测试点表格为准"的原则收敛冗余展示：编译错误不再把 g++ 原始输出（含服务器绝对路径）呈现给用户，只保留 <code>main.cpp:行号</code> 级别的脱敏摘要；编译成功时不额外提示；题目详情页样例输入/输出分行展示。
+</div>
+
 <!-- ============================== 3. 成果展示 ============================== -->
 <h2>3. 成果展示</h2>
 
@@ -482,26 +504,36 @@ def _parse_command(cmd: str) -> list[str]:
   <tr><td>性能优化</td><td>评测列表接口</td><td>1.6s → 0.04s（mtime 缓存）</td><td class="ok">通过</td></tr>
   <tr><td>pending 详情</td><td>评测中从列表点进详情</td><td>不再叠列表（st.fragment 轮询）</td><td class="ok">通过</td></tr>
   <tr><td>通过数统计</td><td>同题重复 AC</td><td>resolve_count 只计一次（含历史重建）</td><td class="ok">通过</td></tr>
+  <tr><td>通过率口径</td><td>通过题数 / 提交过的题数（按题去重）</td><td>admin 提交过 5 题全过 → 100.0%；未提交过任何题的显示「-」</td><td class="ok">通过</td></tr>
+  <tr><td>标程验证</td><td>标程重算测试点答案 + 坏数据丢弃</td><td>手算错误的答案被覆盖；声明行数与实际不符的测试点被拦截</td><td class="ok">通过</td></tr>
+  <tr><td>编译信息脱敏</td><td>C++ 编译错误</td><td>不泄露服务器路径，只保留 main.cpp 行号级摘要</td><td class="ok">通过</td></tr>
+  <tr><td>大测试点导入</td><td>百万字符测试点导入题库</td><td>表单折叠摘要不卡死，提交数据完整（最大实测 728 万字符）</td><td class="ok">通过</td></tr>
   <tr><td>删除题目</td><td>级联清理</td><td>该题提交与审计日志一并删除，评测中任务丢弃</td><td class="ok">通过</td></tr>
-  <tr><td>AI 命题</td><td>真实 DeepSeek 出题</td><td>完整题目 JSON + 5 测试点，费用 ¥0.223</td><td class="ok">通过</td></tr>
+  <tr><td>AI 命题</td><td>真实大模型出题</td><td>10 个测试点（模型规划小/大比例），标程验证答案，费用 ¥0.007~0.053</td><td class="ok">通过</td></tr>
   <tr><td>AI 中断</td><td>运行中 cancel</td><td>立即 cancelled，interrupted=true</td><td class="ok">通过</td></tr>
   <tr><td>AI 中断边界</td><td>已完成任务 cancel</td><td>409 拒绝（边界正确）</td><td class="ok">通过</td></tr>
 </table>
 
-<h3>3.2 AI 智能命题全链路（真实 DeepSeek）</h3>
-<p>使用真实 DeepSeek 大模型（非 mock）验证完整命题流程，两次成功出题：</p>
+<h3>3.2 AI 智能命题全链路（真实大模型）</h3>
+<p>使用真实大模型（非 mock）验证完整命题流程，多次成功出题，测试点构成由模型按题目性质规划（共 10 个）：</p>
 
 <table>
-  <tr><th>命题需求</th><th>生成题目</th><th>难度/标签</th><th>测试点</th><th>费用</th></tr>
-  <tr><td>二分查找（超市货架价格标签情境）</td><td>「货架寻价」<code>binary_search_price_tag</code></td><td>中等偏基础 / 二分查找·数组·lower_bound</td><td>5 个（覆盖最小规模/目标在首尾中间/不存在/大数值）</td><td>¥0.223</td></tr>
-  <tr><td>动态规划·最长公共子序列</td><td>「最大连续收益」<code>max_contiguous_profit</code></td><td>中等偏基础 / 动态规划·最大子段和·线性DP</td><td>9 个</td><td>¥0.278</td></tr>
+  <tr><th>命题需求</th><th>生成题目</th><th>测试点规划</th><th>测试点</th><th>费用/耗时</th></tr>
+  <tr><td>二分查找（超市货架价格标签情境）</td><td>「货架寻价」<code>binary_search_price_tag</code></td><td>—</td><td>5 个（覆盖最小规模/目标在首尾中间/不存在/大数值）</td><td>¥0.223</td></tr>
+  <tr><td>动态规划·最长公共子序列</td><td>「最大连续收益」<code>max_contiguous_profit</code></td><td>—</td><td>9 个</td><td>¥0.278</td></tr>
+  <tr><td>贪心·任务安排（大测试点验证）</td><td>「任务安排」<code>schedule_max_tasks</code></td><td>6 小 + 4 大</td><td>10 个，大测试点 59 万 → 198 万字符梯度</td><td>标程验证 8 个小测试点全部正确</td></tr>
+  <tr><td>多线程死锁检测</td><td>「死锁检测」<code>deadlock_detection</code></td><td>7 小 + 3 大</td><td>10 个，最大 148 万字符</td><td>约 7-8 分钟 / ¥0.053</td></tr>
+  <tr><td>多线程死锁检测（需求指定不使用大测试点）</td><td>「死锁检测器」<code>deadlock_detection</code></td><td>10 小 + 0 大</td><td>10 个小测试点</td><td>4 分 20 秒 / ¥0.032</td></tr>
+  <tr><td>Python print 练习（简单题）</td><td>「Python 输出练习」<code>python_print_practice</code></td><td>10 小 + 0 大</td><td>10 个小测试点</td><td>55 秒 / ¥0.007</td></tr>
 </table>
 
 <p>全链路验证要点：</p>
 <ol>
-  <li>配置 provider_url / model / api_key（密钥仅返回 <code>api_key_configured: true</code> 标志，不明文泄露）；</li>
-  <li>提交命题需求，任务状态机 <code>pending → running → completed</code>，进度实时轮询更新；</li>
-  <li>生成的题目严格贴合输入知识点（二分查找 / 动态规划）与难度要求，样例含边界情况；</li>
+  <li>配置 provider_url / model / api_key（密钥仅返回 <code>api_key_configured: true</code> 标志，不明文泄露），支持任意 OpenAI 兼容 provider 切换；</li>
+  <li>提交命题需求，任务状态机 <code>pending → running → completed</code>，进度与 Token 用量实时轮询更新（快照对比，数据不变不刷新）；</li>
+  <li>生成的题目严格贴合输入知识点与难度要求，样例含边界情况；</li>
+  <li>测试点构成由模型按题目性质规划（testcase_plan），需求文字可干预（实测"不使用大规模测试点"生效，耗时从 7-8 分钟降到 4 分 20 秒）；</li>
+  <li>每个测试点的答案经<strong>标程重算验证</strong>，坏数据被自动丢弃并留痕；</li>
   <li>生成结果以「添加/编辑题目」同款表单展示，可直接或修改后导入题库；</li>
   <li>导入题库后提交正确代码 → 评测 AC，证明 <strong>AI 命题与题库/评测链路完整衔接</strong>。</li>
 </ol>
@@ -553,10 +585,11 @@ def _parse_command(cmd: str) -> list[str]:
   <tr><td>需求通读与方案设计</td><td>约 1.5 小时</td><td>通读 11 份需求文档，确认范围、技术选型、模块划分</td></tr>
   <tr><td>基础模块实现（Step 1–6）</td><td>约 4 小时</td><td>脚手架 + 6 个模块的代码与端到端测试</td></tr>
   <tr><td>AI 智能命题模块</td><td>约 3 小时</td><td>模型调用、任务状态机、分阶段生成、Token 计费、真实出题与中断验证</td></tr>
+  <tr><td>AI 命题数据质量与容错</td><td>约 2.5 小时</td><td>标程重算验证、坏数据丢弃、生成器大测试点、testcase_plan、网络重试、僵尸任务恢复、大测试点前端摘要化</td></tr>
   <tr><td>前端交互与体验打磨</td><td>约 2 小时</td><td>三组页面美化、会话持久化、分页、AI 配置弹窗与历史列表</td></tr>
-  <tr><td>持续提交与推送</td><td>约 1 小时</td><td>82 次 Conventional Commits + push</td></tr>
+  <tr><td>持续提交与推送</td><td>约 1.5 小时</td><td>106 次 Conventional Commits + push</td></tr>
   <tr><td>报告与配图</td><td>约 1 小时</td><td>本文档 + 3 张配图</td></tr>
-  <tr><th>总计</th><th>约 12.5 小时</th><th>—</th></tr>
+  <tr><th>总计</th><th>约 15.5 小时</th><th>—</th></tr>
 </table>
 
 <h3>5.2 反思与收获</h3>
@@ -566,12 +599,14 @@ def _parse_command(cmd: str) -> list[str]:
   <li><strong>统一响应结构</strong> + <strong>异常处理顺序</strong>（401→403→400→429→409→404→500）让所有接口行为可预期，前端不需要为每个接口写特殊错误处理。</li>
   <li><strong>JSON 文件存储</strong> 在小规模场景下简单可靠，但并发写需要原子 rename；读性能上，数据量过百后逐个读文件会成为瓶颈，<strong>基于 mtime 的读缓存</strong>是零风险的通用提速手段（实测 40 倍）。如果未来扩展到多实例部署，应改用 SQLite / Redis。</li>
   <li><strong>AI 命题</strong> 是最有"未来感"的部分，题目生成后能直接进题库被评测，整个链路验证了"AI 与基础功能不割裂"。</li>
+  <li><strong>AI 生成内容的可信度需要工程兜底</strong>：模型手算测试点答案会错、生成的输入会违反自己声明的格式。用"标程重算 + 坏数据丢弃"把答案从"模型声称"变成"本地验证"，是本模块最有价值的教训。</li>
 </ul>
 
 <h3>5.3 改进建议</h3>
 <ul>
   <li>评测引擎可加入 <strong>编译缓存</strong>（相同源码不重复编译）；多测试点并发（<code>asyncio.gather</code>）可缩短总耗时。</li>
-  <li>AI 命题可加入 <strong>题面润色</strong>、<strong>测试点自动验证</strong>（用 AI 自己写标程并跑一遍），提高生成质量与正确性。</li>
+  <li>AI 命题的<strong>测试点自动验证（标程重算）与生成器大测试点</strong>已实现，后续可加入题面润色、不同难度档位的系统化评分预测。</li>
+  <li>命题耗时可通过 <strong>阶段并行化</strong>（标程验证与生成器脚本生成并发）进一步压缩，向 4 分钟目标靠拢。</li>
   <li>用户管理可加入 <strong>邮箱验证</strong>、<strong>密码强度策略</strong>、<strong>登录失败锁定</strong> 等更严密的安全机制。</li>
   <li>存储层可抽象为接口，<strong>未来可平滑替换为数据库</strong>（SQLite/PostgreSQL）而不影响上层逻辑。</li>
   <li>前端可加入 <strong>实时评测日志流</strong>（SSE 或 WebSocket）替代轮询，进一步降低响应延迟。</li>
