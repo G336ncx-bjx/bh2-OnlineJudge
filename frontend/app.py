@@ -1791,20 +1791,19 @@ def render_ai_task_detail():
             col4.metric("费用", f"{symbol}{usage.get('cost', 0.0):.6f}")
 
     if status in ("pending", "running"):
-        # 任务运行中：整个状态区放进 run_every fragment，每 2 秒刷新，
-        # 任务结束后触发一次全量 rerun 渲染完整结果。
-        # （不用服务端无限 st.rerun()：元素变少时会残留旧 DOM 导致叠层，见 streamlit#8360）
-        @st.fragment(run_every="2s")
-        def _poll_ai():
-            code2, d2, _ = api_call("GET", f"/api/ai/problem-tasks/{task_id}")
-            if code2 == 200 and d2:
-                _render_status_info(d2)
-                if d2.get("status") not in ("pending", "running"):
-                    # 任务结束（completed/failed/cancelled），触发一次全量 rerun 渲染结果
-                    st.rerun()
-            else:
-                _render_status_info(data)
-            st.info("⏳ 任务进行中，正在自动刷新进度…")
+        # 任务运行中：状态区静态渲染一次，fragment 只负责轮询。
+        # 轮询到数据与上次快照不同（进度/状态/用量变化）才触发整页 rerun 刷新；
+        # 数据没变时 fragment 不渲染任何内容，页面保持不动，不闪烁。
+        # 先初始化快照，避免进入详情页后第一次轮询就无谓 rerun。
+        u0 = data.get("usage") or {}
+        st.session_state.setdefault(
+            f"_ai_snap_{task_id}",
+            (status, progress, u0.get("input_tokens", 0),
+             u0.get("output_tokens", 0), u0.get("total_tokens", 0)),
+        )
+        _render_status_info(data)
+        c1, _c2 = st.columns([1, 3])
+        with c1:
             if st.button("🛑 中断任务", key=f"ai_cancel_{task_id}", use_container_width=True):
                 code, _, msg = api_call("PUT", f"/api/ai/problem-tasks/{task_id}/cancel")
                 if code == 200:
@@ -1812,6 +1811,20 @@ def render_ai_task_detail():
                     st.rerun()
                 else:
                     st.error(msg)
+        st.info("⏳ 任务进行中，进度变化时自动刷新…")
+
+        @st.fragment(run_every="2s")
+        def _poll_ai():
+            code2, d2, _ = api_call("GET", f"/api/ai/problem-tasks/{task_id}")
+            if code2 == 200 and d2:
+                u = d2.get("usage") or {}
+                snap = (d2.get("status"), d2.get("progress"),
+                        u.get("input_tokens", 0), u.get("output_tokens", 0),
+                        u.get("total_tokens", 0))
+                if snap != st.session_state.get(f"_ai_snap_{task_id}"):
+                    st.session_state[f"_ai_snap_{task_id}"] = snap
+                    st.rerun()  # 数据有变化才整页刷新（状态区在 fragment 外）
+            # 数据没变：什么都不渲染，页面保持原样
         _poll_ai()
         return
 
