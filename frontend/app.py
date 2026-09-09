@@ -1163,7 +1163,7 @@ def render_problem_detail():
         st.markdown("**样例**")
         for i, s in enumerate(data.get("samples", [])):
             st.markdown(f"样例 {i+1}:")
-            st.code(f"输入: {s['input']}\n输出: {s['output']}")
+            st.code(f"输入：\n{s['input']}\n输出：\n{s['output']}")
         st.markdown(f"**限制**: {data.get('constraints', '')}")
         if data.get("hint"):
             st.markdown(f"**提示**: {data['hint']}")
