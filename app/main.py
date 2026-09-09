@@ -64,6 +64,17 @@ async def on_startup():
     ensure_initial_admin()
     _seed_languages()
     queue.start_worker()
+    # 启动迁移：旧数据用户补齐 attempted_problems（提交过的题目集合）。
+    # 该字段用于通过率 = 通过题数/提交过的题数；旧用户没有此字段，
+    # 启动时从历史提交一次性重建，避免接口层每次请求都扫描。
+    users = storage.get_users()
+    changed = False
+    for u in users.values():
+        if "attempted_problems" not in u:
+            u["attempted_problems"] = queue._rebuild_attempted(u.get("user_id", ""))
+            changed = True
+    if changed:
+        storage.save_users(users)
     # 启动恢复：把磁盘上遗留的 pending 提交重新入队（服务重启前中断的评测不丢）
     requeued = queue.requeue_stale_pending()
     if requeued:
