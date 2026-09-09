@@ -471,6 +471,7 @@ async def _verify_testcases_with_solver(task: dict, problem: dict,
                 return None
 
         fixed: list = []
+        dropped = 0
         for tc in testcases:
             res = await run_command(
                 ["python", solver_path],
@@ -480,11 +481,19 @@ async def _verify_testcases_with_solver(task: dict, problem: dict,
                 cwd=tmp_dir,
             )
             if res.timed_out or res.memory_exceeded or res.returncode != 0:
-                # 标程跑不出来的测试点保留原答案（有总比没有好）
-                fixed.append(tc)
+                # 标程已通过题面样例自检，仍跑崩说明该测试点的输入大概率
+                # 违反 input_description 的输入保证（如声明 q 行实际少一行），
+                # 是坏数据——丢弃而不是保留，否则会让所有正常解法 RE/WTF。
+                # （实例：多线程订票题 test6 声明 q=8 实际 7 行，标程和用户
+                # 代码都 IndexError，坏数据被"保留原答案"策略放过了）
+                dropped += 1
                 continue
             tc["output"] = res.stdout.strip()
             fixed.append(tc)
+        if dropped:
+            task.setdefault("verify_note", "")
+            task["verify_note"] += f"标程验证丢弃 {dropped} 个输入异常的测试点。"
+            _save_task(task)
         return fixed
     except Exception:
         return None
