@@ -7,9 +7,11 @@
 import asyncio
 import json
 import os
+import re
 from typing import Optional
 
 from .. import config, storage
+from ..judge.runner import run_command
 from . import llm
 
 # 命题系统提示词（阶段一）：只生成题目主体，不含 testcases（测试点由阶段二单独生成）
@@ -58,6 +60,29 @@ TESTCASE_PROMPT = """你是 OJ 测试点设计专家。下面是一道已设计�
 3. 每个测试点的 output 必须是与 input 严格对应的正确输出。
 4. 输入输出格式必须严格符合题目的 input_description / output_description。
 5. {coverage}
+"""
+
+# 阶段三：大测试点生成器提示词。
+# 直接让模型输出大规模测试数据不现实（输出 token 上限），改为让模型写一个
+# 「数据生成器 + 标程」Python 脚本，由服务器本地执行产出大规模输入和标准输出，
+# 从而突破模型输出长度限制，并满足 4 分钟内出题的时间要求。
+GENERATOR_PROMPT = """你是 OJ 测试点生成器设计专家。下面这道题在 constraints 中声明了较大规模的数据，但已生成的测试点规模偏小，需要补充大规模测试点。
+
+题目信息：
+{problem}
+
+请输出一个 Python 脚本（不要用 markdown 代码块包裹，直接输出纯代码），脚本必须：
+1. 定义函数 generate_input() -> str：返回一个符合 input_description 的**大规模**输入字符串（数据规模逼近 constraints 上限，如 n 取最大值、行数上万等）。
+2. 定义函数 solve(data: str) -> str：返回该输入对应的正确输出字符串。solve 使用能通过题目的正确算法（标程），例如数据规模大时用 O(n log n) 或更优的解法。
+3. 在脚本末尾包含：
+   data = generate_input()
+   print("===INPUT===")
+   print(data, end="")
+   print("===OUTPUT===")
+   print(solve(data), end="")
+4. 脚本只依赖 Python 标准库，不要导入第三方库。
+5. 保证 generate_input 生成的数据满足 constraints 中的全部范围限制。
+6. 保证 solve 的输出格式严格符合 output_description。
 """
 
 
@@ -196,6 +221,18 @@ async def run_problem_task(task_id: str) -> None:
             return
         problem["testcases"] = testcases
 
+        # 阶段 3.5：大规模测试点增强（可选，失败不影响整体）
+        # constraints 声明大规模数据但已生成测试点规模偏小时，让模型写
+        # 「生成器+标程」脚本，本地执行产出大规模测试点，突破模型输出上限。
+        if await _check_cancelled(task_id):
+            return
+        if _needs_large_testcases(problem):
+            task["progress"] = "正在生成大规模测试点"
+            _save_task(task)
+            large = await _generate_large_testcases(task, problem)
+            if large:
+                problem["testcases"].extend(large)
+
         # 阶段 4：校验并补全字段
         if await _check_cancelled(task_id):
             return
@@ -307,6 +344,117 @@ async def _generate_testcases(task: dict, problem: dict) -> Optional[list]:
                 collected.append(tc)
 
     return collected if collected else None
+
+
+# ---------------------------------------------------------------- 大规模测试点
+def _needs_large_testcases(problem: dict) -> bool:
+    """判断是否需要补充大规模测试点。
+
+    启发式：从 constraints 中提取声明的大数据量（如 n、长度、范围上限），
+    若声明的规模（≥10^4 量级）明显大于已有测试点的实际输入规模，则认为需要。
+    保守策略：拿不准时返回 False（不折腾，保持流程稳定）。
+    """
+    constraints = problem.get("constraints", "") or ""
+    tcs = problem.get("testcases", [])
+    if not tcs:
+        return False
+    max_in_len = max(len(tc.get("input", "")) for tc in tcs)
+    # 提取 constraints 中的数字上限（取最大的数值）
+    nums = [int(x) for x in re.findall(r"\d+", constraints)]
+    big = [n for n in nums if n >= 10_000]
+    if not big:
+        return False
+    declared_max = max(big)
+    # 实际输入太小（字符数 < 声明规模的 1/100，且小于 2000 字符）才需要增强
+    if max_in_len < 2000 and max_in_len * 100 < declared_max:
+        return True
+    return False
+
+
+def _extract_code(content: str) -> str:
+    """从模型返回文本中提取脚本代码（兼容 markdown 代码块）。"""
+    text = content.strip()
+    m = re.search(r"```(?:python)?\s*\n(.*?)```", text, re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    return text
+
+
+async def _generate_large_testcases(task: dict, problem: dict) -> Optional[list]:
+    """让模型写「生成器+标程」脚本，本地执行产出大规模测试点。
+
+    返回 testcases 列表（成功）或 None（失败，不影响整体流程）。
+    """
+    summary = {
+        "title": problem.get("title", ""),
+        "description": problem.get("description", ""),
+        "input_description": problem.get("input_description", ""),
+        "output_description": problem.get("output_description", ""),
+        "samples": problem.get("samples", []),
+        "constraints": problem.get("constraints", ""),
+    }
+    problem_text = json.dumps(summary, ensure_ascii=False, indent=2)
+
+    try:
+        content, usage = await llm.call_llm(
+            [
+                {"role": "system", "content": GENERATOR_PROMPT.format(problem=problem_text)},
+                {"role": "user", "content": "请输出生成器脚本。"},
+            ],
+            temperature=0.3,
+        )
+        _accumulate_usage(task, usage)
+    except Exception:
+        return None
+    if await _check_cancelled(task.get("task_id", "")):
+        return None
+
+    code = _extract_code(content)
+    if "generate_input" not in code or "solve" not in code:
+        return None
+
+    # 在临时目录写脚本并执行
+    tmp_dir = os.path.join(config.JUDGE_TMP_DIR, "gen_" + task.get("task_id", "x"))
+    os.makedirs(tmp_dir, exist_ok=True)
+    script_path = os.path.join(tmp_dir, "gen.py")
+    try:
+        with open(script_path, "w", encoding="utf-8", newline="") as f:
+            f.write(code)
+        res = await run_command(
+            ["python", script_path],
+            stdin_data="",
+            time_limit=30.0,          # 标程运行 30s 上限
+            memory_limit=512.0,       # 512MB
+            cwd=tmp_dir,
+        )
+        if res.timed_out or res.memory_exceeded or res.returncode != 0:
+            return None
+        out = res.stdout
+        # 用固定标记切分（不用正则非贪婪，避免输入数据内部的换行干扰匹配）
+        in_marker = "===INPUT==="
+        out_marker = "===OUTPUT==="
+        i_pos = out.find(in_marker)
+        o_pos = out.find(out_marker)
+        if i_pos == -1 or o_pos == -1 or o_pos <= i_pos:
+            return None
+        big_input = out[i_pos + len(in_marker):o_pos]
+        big_output = out[o_pos + len(out_marker):]
+        # 去掉首尾多余空白（标记后的第一个换行、末尾的换行）
+        big_input = big_input.strip("\n")
+        big_output = big_output.strip("\n")
+        # 数据确实大才有意义
+        if len(big_input) < 2000:
+            return None
+        return [{"input": big_input, "output": big_output}]
+    except Exception:
+        return None
+    finally:
+        # 清理临时目录
+        try:
+            import shutil
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        except Exception:
+            pass
 
 
 def _normalize_problem(problem: dict) -> Optional[dict]:
