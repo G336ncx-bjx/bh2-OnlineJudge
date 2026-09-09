@@ -1802,16 +1802,14 @@ def render_ai_task_detail():
              u0.get("output_tokens", 0), u0.get("total_tokens", 0)),
         )
         _render_status_info(data)
-        c1, _c2 = st.columns([1, 3])
-        with c1:
-            if st.button("🛑 中断任务", key=f"ai_cancel_{task_id}", use_container_width=True):
-                code, _, msg = api_call("PUT", f"/api/ai/problem-tasks/{task_id}/cancel")
-                if code == 200:
-                    st.warning("任务已中断")
-                    st.rerun()
-                else:
-                    st.error(msg)
         st.info("⏳ 任务进行中，进度变化时自动刷新…")
+        if st.button("🛑 中断任务", key=f"ai_cancel_{task_id}", use_container_width=True):
+            code, _, msg = api_call("PUT", f"/api/ai/problem-tasks/{task_id}/cancel")
+            if code == 200:
+                st.warning("任务已中断")
+                st.rerun()
+            else:
+                st.error(msg)
 
         @st.fragment(run_every="2s")
         def _poll_ai():
