@@ -855,11 +855,44 @@ def _problem_form(prefill: dict | None = None, pid_editable: bool = True):
         value=json.dumps(p.get("samples", []), ensure_ascii=False, indent=2)
         if p.get("samples") else "",
     )
-    testcases_str = st.text_area(
-        "测试点 (JSON数组，元素含input/output)",
-        value=json.dumps(p.get("testcases", []), ensure_ascii=False, indent=2)
-        if p.get("testcases") else "",
+    # 大测试点（input/output 超过 BIG_TC_THRESHOLD 字符）只显示摘要而不渲染原文：
+    # 生成器产出的大测试点动辄百万字符，塞进 textarea 会卡死浏览器。
+    # 完整数据保留在 prefill 中，提交时自动带上，不受摘要显示影响。
+    BIG_TC_THRESHOLD = 2000
+    testcases = p.get("testcases", []) if p.get("testcases") else []
+    big_count = sum(
+        1 for tc in testcases
+        if len(tc.get("input", "")) > BIG_TC_THRESHOLD
+        or len(tc.get("output", "")) > BIG_TC_THRESHOLD
     )
+    if big_count:
+        summary_lines = []
+        for tc in testcases:
+            il, ol = len(tc.get("input", "")), len(tc.get("output", ""))
+            if il > BIG_TC_THRESHOLD or ol > BIG_TC_THRESHOLD:
+                summary_lines.append(
+                    json.dumps(
+                        {"input": f"[大测试点] 输入 {il} 字符（已完整保留，提交时自动带上）",
+                         "output": f"[大测试点] 输出 {ol} 字符（已完整保留，提交时自动带上）"},
+                        ensure_ascii=False)
+                )
+            else:
+                summary_lines.append(json.dumps(tc, ensure_ascii=False))
+        testcases_display = "[\n  " + ",\n  ".join(summary_lines) + "\n]"
+        st.info(f"本题含 {big_count} 个大规模测试点，为避免页面卡顿仅显示摘要，"
+                f"提交时完整数据会自动包含。")
+        testcases_str = st.text_area(
+            "测试点 (大测试点仅显示摘要)",
+            value=testcases_display,
+            height=200,
+            disabled=True,
+        )
+    else:
+        testcases_str = st.text_area(
+            "测试点 (JSON数组，元素含input/output)",
+            value=json.dumps(p.get("testcases", []), ensure_ascii=False, indent=2)
+            if p.get("testcases") else "",
+        )
     hint = st.text_input("提示 (可选)", value=p.get("hint", ""))
     # 标签与难度（AI 命题生成的结果含 tags/difficulty，须可预填与编辑）
     tags = st.text_input(
@@ -876,12 +909,24 @@ def _problem_form(prefill: dict | None = None, pid_editable: bool = True):
     submitted = st.form_submit_button("提交", type="primary", use_container_width=True)
     # 标签：逗号分隔字符串 → 列表（去除空项）
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else []
-    return submitted, _problem_payload(
-        pid, title, description, input_desc, output_desc, constraints,
-        samples_str, testcases_str, hint, time_limit, memory_limit,
-        tags=tag_list, difficulty=difficulty.strip(),
-        source=p.get("source", ""), author=p.get("author", ""),
-    )
+    # 大测试点已用摘要占位时，提交直接使用 prefill 的完整 testcases，
+    # 不能解析 textarea 里的占位文本。
+    if big_count:
+        payload = _problem_payload(
+            pid, title, description, input_desc, output_desc, constraints,
+            samples_str, json.dumps(testcases, ensure_ascii=False), hint,
+            time_limit, memory_limit,
+            tags=tag_list, difficulty=difficulty.strip(),
+            source=p.get("source", ""), author=p.get("author", ""),
+        )
+    else:
+        payload = _problem_payload(
+            pid, title, description, input_desc, output_desc, constraints,
+            samples_str, testcases_str, hint, time_limit, memory_limit,
+            tags=tag_list, difficulty=difficulty.strip(),
+            source=p.get("source", ""), author=p.get("author", ""),
+        )
+    return submitted, payload
 
 
 def _paginated_list(key, items, row_renderer, page_size=10):
