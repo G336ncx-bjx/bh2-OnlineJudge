@@ -764,8 +764,12 @@ def render_user_info():
 
     submit_count = data.get("submit_count", 0)
     resolve_count = data.get("resolve_count", 0)
-    # 通过率 = 通过题数 / 提交数（避免除零）
-    rate = (resolve_count / submit_count * 100) if submit_count else 0.0
+    # 通过率 = 通过题数 / 题库总题数（题库完成度）。
+    # 旧口径 resolve_count / submit_count 分子按题去重、分母按次累计，量纲
+    # 混乱（同一题反复提交会拉低通过率），不符合常识，故改为完成度口径。
+    code_p, probs, _ = api_call("GET", "/api/problems/")
+    total_problems = len(probs) if code_p == 200 and probs else 0
+    rate = (resolve_count / total_problems * 100) if total_problems else 0.0
 
     # 头部：头像 + 用户名 + 角色徽章 + 用户 ID
     st.markdown(
@@ -781,6 +785,7 @@ def render_user_info():
     )
 
     # 统计卡片：提交数 / 通过题数 / 通过率
+    rate_str = f"{rate:.1f}%" if total_problems else "-"
     st.markdown(
         '<div class="oj-stat-row">'
         f'<div class="oj-stat-card"><div class="oj-stat-k">提交次数</div>'
@@ -788,7 +793,7 @@ def render_user_info():
         f'<div class="oj-stat-card"><div class="oj-stat-k">通过题数</div>'
         f'<div class="oj-stat-v oj-stat-score">{resolve_count}</div></div>'
         f'<div class="oj-stat-card"><div class="oj-stat-k">通过率</div>'
-        f'<div class="oj-stat-v">{rate:.1f}%</div></div>'
+        f'<div class="oj-stat-v">{rate_str}</div></div>'
         "</div>",
         unsafe_allow_html=True,
     )
