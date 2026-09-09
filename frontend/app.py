@@ -1762,10 +1762,10 @@ def render_ai_task_detail():
     status = data.get("status")
     progress = data.get("progress", "")
     result = data.get("result")
-    usage = data.get("usage", {})
     error_info = data.get("error_info", "")
 
-    # 状态展示
+    # 状态 / 进度 / 用量展示（任务运行时放进 run_every fragment 里每 2 秒刷新，
+    # 否则这些信息只显示创建时的快照——用量一直是 0，进度一直不动）
     status_map = {
         "pending": "⏳ 等待中",
         "running": "🔄 执行中",
@@ -1773,43 +1773,50 @@ def render_ai_task_detail():
         "cancelled": "⛔ 已中断",
         "failed": "❌ 失败",
     }
-    st.write(f"**状态**: {status_map.get(status, status)}")
-    st.write(f"**进度**: {progress}")
 
-    if error_info:
-        st.error(error_info)
+    def _render_status_info(d: dict) -> None:
+        st.write(f"**状态**: {status_map.get(d.get('status'), d.get('status'))}")
+        st.write(f"**进度**: {d.get('progress', '')}")
+        if d.get("error_info"):
+            st.error(d["error_info"])
+        usage = d.get("usage") or {}
+        if usage:
+            currency = usage.get("currency", "USD")
+            symbol_map = {"USD": "$", "CNY": "¥"}
+            symbol = symbol_map.get(currency, currency)
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("输入 Token", usage.get("input_tokens", 0))
+            col2.metric("输出 Token", usage.get("output_tokens", 0))
+            col3.metric("总 Token", usage.get("total_tokens", 0))
+            col4.metric("费用", f"{symbol}{usage.get('cost', 0.0):.6f}")
 
-    # Token 用量与费用
-    if usage:
-        currency = usage.get("currency", "USD")
-        symbol_map = {"USD": "$", "CNY": "¥"}
-        symbol = symbol_map.get(currency, currency)
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("输入 Token", usage.get("input_tokens", 0))
-        col2.metric("输出 Token", usage.get("output_tokens", 0))
-        col3.metric("总 Token", usage.get("total_tokens", 0))
-        col4.metric("费用", f"{symbol}{usage.get('cost', 0.0):.6f}")
-
-    # 运行中：用 st.fragment(run_every) 定时重跑这段，而不是服务端无限 st.rerun()
-    # （避免「元素变少」时前端残留旧 DOM 导致详情页下方叠加历史任务列表，见 streamlit#8360）
     if status in ("pending", "running"):
+        # 任务运行中：整个状态区放进 run_every fragment，每 2 秒刷新，
+        # 任务结束后触发一次全量 rerun 渲染完整结果。
+        # （不用服务端无限 st.rerun()：元素变少时会残留旧 DOM 导致叠层，见 streamlit#8360）
         @st.fragment(run_every="2s")
         def _poll_ai():
             code2, d2, _ = api_call("GET", f"/api/ai/problem-tasks/{task_id}")
-            if code2 == 200 and d2 and d2.get("status") not in ("pending", "running"):
-                # 任务结束（completed/failed/cancelled），触发一次全量 rerun 渲染结果
-                st.rerun()
+            if code2 == 200 and d2:
+                _render_status_info(d2)
+                if d2.get("status") not in ("pending", "running"):
+                    # 任务结束（completed/failed/cancelled），触发一次全量 rerun 渲染结果
+                    st.rerun()
             else:
-                st.info("⏳ 任务进行中，正在自动刷新进度…")
-                if st.button("🛑 中断任务", key=f"ai_cancel_{task_id}", use_container_width=True):
-                    code, _, msg = api_call("PUT", f"/api/ai/problem-tasks/{task_id}/cancel")
-                    if code == 200:
-                        st.warning("任务已中断")
-                        st.rerun()
-                    else:
-                        st.error(msg)
+                _render_status_info(data)
+            st.info("⏳ 任务进行中，正在自动刷新进度…")
+            if st.button("🛑 中断任务", key=f"ai_cancel_{task_id}", use_container_width=True):
+                code, _, msg = api_call("PUT", f"/api/ai/problem-tasks/{task_id}/cancel")
+                if code == 200:
+                    st.warning("任务已中断")
+                    st.rerun()
+                else:
+                    st.error(msg)
         _poll_ai()
         return
+
+    # 任务已结束：静态渲染状态信息
+    _render_status_info(data)
 
     # 失败：给出提示（无结果可导入）
     if status == "failed":
