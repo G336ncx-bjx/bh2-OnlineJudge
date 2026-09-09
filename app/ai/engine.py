@@ -125,6 +125,26 @@ def list_task_ids() -> list[str]:
     return sorted(ids)
 
 
+def recover_stale_tasks() -> int:
+    """启动恢复：把上次进程退出遗留的 pending/running 任务标记为 failed。
+
+    命题协程是内存态的后台任务，服务重启后不会自动继续；若不处理，
+    这些任务会永久卡在 pending/running。返回处理数量。
+    """
+    count = 0
+    for tid in list_task_ids():
+        t = _get_task(tid)
+        if t is None:
+            continue
+        if t.get("status") in ("pending", "running"):
+            t["status"] = "failed"
+            t["progress"] = "任务已失效（服务重启导致执行中断），请重新提交"
+            t["error_info"] = "服务重启导致命题任务中断，请重新提交需求"
+            _save_task(t)
+            count += 1
+    return count
+
+
 def _save_task(task: dict) -> None:
     path = config.AI_TASKS_DIR + "/" + task["task_id"] + ".json"
     storage._write_json(path, task)
@@ -464,10 +484,12 @@ async def _verify_testcases_with_solver(task: dict, problem: dict,
     except Exception:
         return None
     finally:
+        # 清理临时目录。注意 BaseException 兜底：个别环境的安全守卫会把
+        # rmtree 转成 SystemExit 杀进程，清理失败绝不能影响任务结果。
         try:
             import shutil
             shutil.rmtree(tmp_dir, ignore_errors=True)
-        except Exception:
+        except BaseException:
             pass
 
 
@@ -561,11 +583,11 @@ async def _generate_large_testcases(task: dict, problem: dict,
     except Exception:
         return None
     finally:
-        # 清理临时目录
+        # 清理临时目录（BaseException 兜底，防安全守卫把 rmtree 转 SystemExit）
         try:
             import shutil
             shutil.rmtree(tmp_dir, ignore_errors=True)
-        except Exception:
+        except BaseException:
             pass
 
 

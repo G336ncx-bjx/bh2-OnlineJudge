@@ -11,6 +11,7 @@ from .deps import get_current_user, is_admin, reset_rate_limits
 from .judge import queue
 from .routers import problems, languages, submissions, users, logs, ai
 from .routers.users import ensure_initial_admin
+from .ai import engine as ai_engine
 
 app = FastAPI(title="OJ System", version="1.0.0")
 
@@ -67,6 +68,11 @@ async def on_startup():
     requeued = queue.requeue_stale_pending()
     if requeued:
         print(f"[startup] requeued {requeued} stale pending submission(s)")
+    # 启动恢复：AI 命题协程是内存态后台任务，重启后遗留的
+    # pending/running 任务标记为 failed，避免永久卡住
+    stale = ai_engine.recover_stale_tasks()
+    if stale:
+        print(f"[startup] marked {stale} stale ai task(s) as failed")
 
 
 @app.on_event("shutdown")
