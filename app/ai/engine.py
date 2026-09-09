@@ -439,9 +439,10 @@ async def _generate_large_testcases(task: dict, problem: dict) -> Optional[list]
             return None
         big_input = out[i_pos + len(in_marker):o_pos]
         big_output = out[o_pos + len(out_marker):]
-        # 去掉首尾多余空白（标记后的第一个换行、末尾的换行）
-        big_input = big_input.strip("\n")
-        big_output = big_output.strip("\n")
+        # 去掉标记后的换行（Windows 下是 \r\n，必须连 \r 一起去掉，否则
+        # 数据第一行前面会残留一个空行，导致按格式读第一行的代码 WA）
+        big_input = big_input.strip("\r\n")
+        big_output = big_output.strip("\r\n")
         # 数据确实大才有意义
         if len(big_input) < 2000:
             return None
