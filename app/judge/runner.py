@@ -25,6 +25,7 @@ class RunResult:
     memory_cost: float       # 峰值内存（MB）
     timed_out: bool = False
     memory_exceeded: bool = False
+    cancelled: bool = False  # 被用户手动取消（停止评测）
     error: str = ""          # 执行器层面的异常信息
 
 
@@ -86,11 +87,14 @@ async def run_command(
     memory_limit: float = 128.0,
     cwd: str = None,
     env: dict = None,
+    cancel_check=None,
 ) -> RunResult:
     """异步执行一条命令，返回 RunResult。
 
     - time_limit：秒，超时返回 timed_out=True
     - memory_limit：MB，超限返回 memory_exceeded=True
+    - cancel_check：可选，返回 True 表示请求取消——运行期间每 0.5s 轮询
+      一次，命中即杀进程返回 cancelled=True（实现「停止评测」）。
     """
     cwd = cwd or config.JUDGE_TMP_DIR
     full_env = os.environ.copy()
@@ -110,18 +114,46 @@ async def run_command(
     flag: dict = {"mle": False, "peak": 0}
     monitor = asyncio.ensure_future(_monitor_memory(proc, memory_limit, flag))
 
+    timed_out = False
+    cancelled = False
     try:
-        stdout_b, stderr_b = await asyncio.wait_for(
-            proc.communicate(stdin_data.encode("utf-8", errors="replace")),
-            timeout=time_limit,
-        )
-        timed_out = False
+        if cancel_check is not None:
+            # 先喂输入（写完关闭 stdin，通知用户程序输入结束），再做分块轮询等待。
+            try:
+                proc.stdin.write(stdin_data.encode("utf-8", errors="replace"))
+                await proc.stdin.drain()
+                proc.stdin.close()
+            except Exception:
+                pass
+            # 分块等待：用 wait() 轮询代替长时 communicate，期间每 0.5s 查一次
+            # 取消标记——单个测试点卡住（如 1000s 时限的死循环）也能被立即中止。
+            while True:
+                if cancel_check():
+                    cancelled = True
+                    break
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=0.5)
+                    break  # 进程已自行退出
+                except asyncio.TimeoutError:
+                    continue
+            # 进程已退出（或已杀），兜底读取残留输出（有界等待，防挂起）
+            try:
+                stdout_b, stderr_b = await asyncio.wait_for(
+                    proc.communicate(), timeout=5.0
+                )
+            except Exception:
+                stdout_b, stderr_b = b"", b""
+        else:
+            stdout_b, stderr_b = await asyncio.wait_for(
+                proc.communicate(stdin_data.encode("utf-8", errors="replace")),
+                timeout=time_limit,
+            )
     except asyncio.TimeoutError:
         timed_out = True
         stdout_b, stderr_b = b"", b""
     finally:
         monitor.cancel()
-        if timed_out:
+        if timed_out or cancelled:
             _kill(proc)
         # 确保进程被回收：不能用无界 await proc.wait()——
         # 在 Windows Proactor 事件循环下，communicate() 被 wait_for 取消后
@@ -153,4 +185,5 @@ async def run_command(
         memory_cost=round(mem_mb, 2),
         timed_out=timed_out,
         memory_exceeded=flag["mle"],
+        cancelled=cancelled,
     )

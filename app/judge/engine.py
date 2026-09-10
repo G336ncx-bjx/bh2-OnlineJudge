@@ -66,13 +66,15 @@ async def compile_source(lang: dict, src_path: str, exe_path: str, cwd: str,
 
 
 async def run_source(lang: dict, src_path: str, exe_path: str, cwd: str,
-                     stdin_data: str, time_limit: float, memory_limit: float) -> RunResult:
-    """运行用户代码。"""
+                     stdin_data: str, time_limit: float, memory_limit: float,
+                     cancel_check=None) -> RunResult:
+    """运行用户代码。cancel_check 为可选回调，返回 True 时中止本次运行。"""
     run_cmd = lang.get("run_cmd", "")
     full_cmd = resolve_placeholders(run_cmd, src_path, exe_path)
     parts = _parse_command(full_cmd)
     return await run_command(
-        parts, stdin_data, time_limit, memory_limit, cwd=cwd
+        parts, stdin_data, time_limit, memory_limit, cwd=cwd,
+        cancel_check=cancel_check,
     )
 
 
@@ -158,23 +160,28 @@ async def judge_submission(submission: dict) -> dict:
         # 2. 逐个测试点运行
         details = []
         ac_count = 0
-        for i, tc in enumerate(testcases):
-            # 用户手动取消：不再运行剩余测试点（懒导入避免与 queue 循环依赖）
+
+        def _cancel_requested() -> bool:
             from .queue import cancel_flags
-            if cancel_flags.get(submission["submission_id"]):
+            return cancel_flags.get(submission["submission_id"], False)
+
+        for i, tc in enumerate(testcases):
+            run_res = await run_source(lang, src_path, exe_path, tmp_dir,
+                                       tc["input"], time_limit, memory_limit,
+                                       cancel_check=_cancel_requested)
+            # 运行期间被取消：该测试点标记 UNK，剩余测试点不再运行
+            if run_res.cancelled:
                 details.append({
                     "id": i + 1,
                     "result": "UNK",
-                    "time": 0.0,
-                    "memory": 0.0,
+                    "time": run_res.time_cost,
+                    "memory": run_res.memory_cost,
                     "input": tc["input"],
                     "output": tc["output"],
                     "expected": tc["output"],
                     "actual": "",
                 })
-                continue
-            run_res = await run_source(lang, src_path, exe_path, tmp_dir,
-                                       tc["input"], time_limit, memory_limit)
+                break
             result, actual = _classify(run_res, tc["output"])
             if result == "AC":
                 ac_count += 1
@@ -187,6 +194,19 @@ async def judge_submission(submission: dict) -> dict:
                 "output": tc["output"],
                 "expected": tc["output"],
                 "actual": _normalize_output(actual),
+            })
+        # 被取消后，剩余测试点补 UNK 占位（保持 counts 与测试点总数一致）
+        for j in range(len(details), len(testcases)):
+            tc = testcases[j]
+            details.append({
+                "id": j + 1,
+                "result": "UNK",
+                "time": 0.0,
+                "memory": 0.0,
+                "input": tc["input"],
+                "output": tc["output"],
+                "expected": tc["output"],
+                "actual": "",
             })
 
         submission["status"] = "success"
