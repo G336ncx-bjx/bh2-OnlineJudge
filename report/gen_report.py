@@ -209,8 +209,8 @@ HTML = r"""<!DOCTYPE html>
   <div class="info">
     <div><strong>作业模块：</strong>基础模块 Step 1–6（30 分）+ 进阶模块 AI 智能命题（10 分）</div>
     <div><strong>技术栈：</strong>FastAPI（异步） + Streamlit + JSON 文件存储 + subprocess/psutil 评测 + OpenAI 兼容大模型（DeepSeek / TokenHub 等，可配置切换）</div>
-    <div><strong>代码规模：</strong>后端 21 个模块 3014 行 + 前端 1991 行 = 5005 行</div>
-    <div><strong>git 提交：</strong>107 次 Conventional Commits 规范提交</div>
+    <div><strong>代码规模：</strong>后端 21 个模块 3136 行 + 前端 1999 行 = 5135 行</div>
+    <div><strong>git 提交：</strong>111 次 Conventional Commits 规范提交</div>
   </div>
   <div style="margin-top: 50pt; color: #888; font-size: 10pt;">
     报告生成于 2026 年 9 月
@@ -243,9 +243,9 @@ HTML = r"""<!DOCTYPE html>
   <figcaption>图 1.1 OJ 系统整体架构</figcaption>
 </figure>
 
-<p><strong>前端层（Streamlit，<code>frontend/app.py</code>，1991 行）</strong>：通过 <code>requests</code> 库调用后端 REST API，不直接访问数据。包含用户、题目、评测提交、AI 命题四组页面，所有受保护操作均通过 Session Cookie 保持登录态，刷新页面通过 localStorage 恢复会话。</p>
+<p><strong>前端层（Streamlit，<code>frontend/app.py</code>，1999 行）</strong>：通过 <code>requests</code> 库调用后端 REST API，不直接访问数据。包含用户、题目、评测提交、AI 命题四组页面，所有受保护操作均通过 Session Cookie 保持登录态，刷新页面通过 localStorage 恢复会话。</p>
 
-<p><strong>后端层（FastAPI，<code>app/</code>，3014 行，32 个异步接口）</strong>：</p>
+<p><strong>后端层（FastAPI，<code>app/</code>，3136 行，33 个异步接口）</strong>：</p>
 <div class="grid">
   <div class="card">
     <h4>路由层 <code>app/routers/</code></h4>
@@ -285,11 +285,11 @@ HTML = r"""<!DOCTYPE html>
 <table>
   <tr><th>评分模块</th><th>对应文件</th><th>关键接口</th><th>分值</th></tr>
   <tr><td>Step 1 题目管理</td><td><code>app/routers/problems.py</code>（167 行）</td><td>GET/POST/PUT/DELETE <code>/api/problems/</code></td><td>5</td></tr>
-  <tr><td>Step 2 评测控制</td><td><code>app/judge/</code>（554 行） + <code>routers/languages.py</code>（43 行）</td><td>POST <code>/api/submissions/</code>、<code>/api/languages/</code></td><td>5</td></tr>
-  <tr><td>Step 3 评测管理</td><td><code>app/routers/submissions.py</code>（235 行）</td><td>GET 列表/详情、PUT rejudge</td><td>5</td></tr>
+  <tr><td>Step 2 评测控制</td><td><code>app/judge/</code>（646 行） + <code>routers/languages.py</code>（43 行）</td><td>POST <code>/api/submissions/</code>、<code>/api/languages/</code></td><td>5</td></tr>
+  <tr><td>Step 3 评测管理</td><td><code>app/routers/submissions.py</code>（265 行）</td><td>GET 列表/详情、PUT rejudge/cancel</td><td>5</td></tr>
   <tr><td>Step 4 用户管理</td><td><code>app/routers/users.py</code>（240 行）</td><td>注册/登录/登出、PUT 角色</td><td>5</td></tr>
   <tr><td>Step 5 评测日志</td><td><code>app/routers/logs.py</code>（43 行）</td><td>GET 日志、PUT 可见性、GET 审计</td><td>5</td></tr>
-  <tr><td>Step 6 前端</td><td><code>frontend/app.py</code>（1991 行）</td><td>—</td><td>5</td></tr>
+  <tr><td>Step 6 前端</td><td><code>frontend/app.py</code>（1999 行）</td><td>—</td><td>5</td></tr>
   <tr><td>AI 智能命题</td><td><code>app/ai/</code>（949 行） + <code>routers/ai.py</code>（214 行）</td><td>配置/任务/进度/取消</td><td>10</td></tr>
 </table>
 
@@ -588,7 +588,7 @@ def _parse_command(cmd: str) -> list[str]:
   <tr><td>AI 智能命题模块</td><td>约 3 小时</td><td>模型调用、任务状态机、分阶段生成、Token 计费、真实出题与中断验证</td></tr>
   <tr><td>AI 命题数据质量与容错</td><td>约 2.5 小时</td><td>标程重算验证、坏数据丢弃、生成器大测试点、testcase_plan、网络重试、僵尸任务恢复、大测试点前端摘要化</td></tr>
   <tr><td>前端交互与体验打磨</td><td>约 2 小时</td><td>三组页面美化、会话持久化、分页、AI 配置弹窗与历史列表</td></tr>
-  <tr><td>持续提交与推送</td><td>约 1.5 小时</td><td>107 次 Conventional Commits + push</td></tr>
+  <tr><td>持续提交与推送</td><td>约 1.5 小时</td><td>111 次 Conventional Commits + push</td></tr>
   <tr><td>报告与配图</td><td>约 1 小时</td><td>本文档 + 3 张配图</td></tr>
   <tr><th>总计</th><th>约 15.5 小时</th><th>—</th></tr>
 </table>
