@@ -464,6 +464,7 @@ def _parse_command(cmd: str) -> list[str]:
   <tr><td>权限：banned</td><td>被封禁用户登录</td><td>403 banned</td><td class="ok">通过</td></tr>
   <tr><td>频率限制</td><td>同题 1 分钟内提交 ≥ 3 次</td><td>429（单人单题，换题不受影响）</td><td class="ok">通过</td></tr>
   <tr><td>重新评测</td><td>admin PUT rejudge</td><td>状态回 pending，旧日志覆盖</td><td class="ok">通过</td></tr>
+  <tr><td>停止评测</td><td>PUT cancel（提交者/管理员）</td><td>评测中/排队中的提交可手动取消，标记 error 提示原因</td><td class="ok">通过</td></tr>
   <tr><td>可见性配置</td><td>PUT public_cases=true</td><td>普通用户也能查日志</td><td class="ok">通过</td></tr>
   <tr><td>审计日志</td><td>GET /api/logs/access/</td><td>仅管理员，记录 view_logs 访问</td><td class="ok">通过</td></tr>
   <tr><td>性能优化</td><td>评测列表接口</td><td>1.6s → 0.04s（mtime 缓存）</td><td class="ok">通过</td></tr>

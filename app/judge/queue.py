@@ -10,6 +10,15 @@ _queue: asyncio.Queue = asyncio.Queue()
 # 后台 worker 任务引用
 _worker_task: asyncio.Task = None
 
+# 取消标记：submission_id -> True，评测引擎在每个测试点之间检查，
+# 发现标记即中止剩余测试点；worker 据此把提交标记为 error（手动取消）。
+cancel_flags: dict[str, bool] = {}
+
+
+def request_cancel(submission_id: str) -> None:
+    """请求取消某条正在评测的提交（置标记，由 worker/engine 协作生效）。"""
+    cancel_flags[submission_id] = True
+
 
 def enqueue(submission_id: str) -> None:
     """将提交任务放入队列。"""
@@ -41,8 +50,24 @@ async def _worker() -> None:
             # 评测前检查：题目已被删除 → 丢弃该任务（不评测、不写回）
             if storage.get_problem(submission.get("problem_id")) is None:
                 continue
+            # 排队期间已被取消 → 不评测，直接标记 error
+            if cancel_flags.pop(submission_id, False):
+                submission["status"] = "error"
+                submission["error_info"] = "评测已被用户手动取消"
+                submission["score"] = 0
+                submission["counts"] = 0
+                submission["details"] = []
+                storage.save_submission(submission)
+                continue
             # 评测
             result = await judge_submission(submission)
+            # 评测中途取消：不写回正常结果、不更新统计，标记 error 说明原因
+            if cancel_flags.pop(submission_id, False):
+                result["status"] = "error"
+                result["error_info"] = "评测已被用户手动取消"
+                result["score"] = 0
+                result["counts"] = 0
+                result["details"] = []
             # 评测后复查：评测期间题目被删除 → 丢弃结果（不写回、不计数）
             if storage.get_problem(result.get("problem_id")) is None:
                 continue

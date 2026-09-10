@@ -159,6 +159,20 @@ async def judge_submission(submission: dict) -> dict:
         details = []
         ac_count = 0
         for i, tc in enumerate(testcases):
+            # 用户手动取消：不再运行剩余测试点（懒导入避免与 queue 循环依赖）
+            from .queue import cancel_flags
+            if cancel_flags.get(submission["submission_id"]):
+                details.append({
+                    "id": i + 1,
+                    "result": "UNK",
+                    "time": 0.0,
+                    "memory": 0.0,
+                    "input": tc["input"],
+                    "output": tc["output"],
+                    "expected": tc["output"],
+                    "actual": "",
+                })
+                continue
             run_res = await run_source(lang, src_path, exe_path, tmp_dir,
                                        tc["input"], time_limit, memory_limit)
             result, actual = _classify(run_res, tc["output"])

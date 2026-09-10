@@ -1454,6 +1454,14 @@ def render_submission_detail():
     status_zh = {"pending": "评测中", "success": "评测完成", "error": "评测出错"}
 
     if status == "pending":
+        # 停止评测按钮（仅提交者/管理员可见，后端接口校验权限）
+        if st.button("⏹ 停止评测", key=f"cancel_sub_{sid}", type="secondary"):
+            code_c, d_c, msg_c = api_call("PUT", f"/api/submissions/{sid}/cancel")
+            if code_c == 200:
+                st.success("已请求停止评测，结果将很快更新")
+                st.rerun()
+            else:
+                st.error(f"停止失败: {msg_c}")
         # 轮询：用 st.fragment(run_every) 让前端定时重跑这段 fragment，而不是服务端
         # 无限 st.rerun()。后者会导致「元素变少」时 Streamlit 前端残留旧 DOM（详见
         # streamlit#8360/#8599：st.rerun() 产生比上一帧更少元素时会渲染重复 key 元素），
